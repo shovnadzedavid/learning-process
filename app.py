@@ -130,7 +130,7 @@ def check_conflicts(new_entry):
 st.title("🎓 სასწავლო პროცესის ორგანიზებისა და განრიგის სოფტი")
 
 # განლაგება: ეკრანის ~30% ფორმა, ~70% მთავარი პანელი
-col_form, col_main = st.columns(, gap="large")
+col_form, col_main = st.columns((3, 7), gap="large")
 
 # --- მარცხენა პანელი: ფორმა (30%) ---
 with col_form:
