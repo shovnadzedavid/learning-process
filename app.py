@@ -11,9 +11,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# მონაცემთა ფაილი
+# მონაცემთა ფაილი და აუდიტორიების სია
 DATA_FILE = "schedule_data.csv"
-AUDITORIUMS = ["აუდიტორია 1", "აუდიტორია 2", "აუდიტორია 3", "აუდიტორია 4", "აუდიტორია 5"]
+AUDITORIUMS = ["აუდიტორია 1", "აუდიტორია 2", "აუდიტორია 3", "აუდიტორია 4", "საკონფერენციო დარბაზი"]
+DAY_NAMES_KA = ["ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი", "კვირა"]
+MONTHS_GE = {
+    1: "იანვარი", 2: "თებერვალი", 3: "მარტი", 4: "აპრილი",
+    5: "მაისი", 6: "ივნისი", 7: "ივლისი", 8: "აგვისტო",
+    9: "სექტემბერი", 10: "ოქტომბერი", 11: "ნოემბერი", 12: "დეკემბერი"
+}
 
 # CSS სტილები - Dark / Light რეჟიმებთან სრული თავსებადობით
 st.markdown("""
@@ -64,9 +70,9 @@ st.markdown("""
     /* ღილაკის სტილი */
     .stButton>button {
         width: 100%;
-        font-size: 1.15rem !important;
+        font-size: 1.1rem !important;
         font-weight: 700 !important;
-        padding: 0.65rem 1rem !important;
+        padding: 0.6rem 1rem !important;
         border-radius: 8px !important;
         background-color: #2563EB !important;
         color: #FFFFFF !important;
@@ -84,7 +90,11 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             df = pd.read_csv(DATA_FILE)
-            return df.to_dict('records')
+            records = df.to_dict('records')
+            for r in records:
+                if r.get('auditorium') == 'აუდიტორია 5':
+                    r['auditorium'] = 'საკონფერენციო დარბაზი'
+            return records
         except Exception:
             return []
     return []
@@ -96,6 +106,10 @@ def save_data(data_list):
 
 if 'schedule' not in st.session_state:
     st.session_state.schedule = load_data()
+
+# კვირის გადართვის ოფსეტი სესიის მეხსიერებაში
+if 'week_offset' not in st.session_state:
+    st.session_state.week_offset = 0
 
 # გადაკვეთის შემოწმების ალგორითმი
 def check_conflicts(new_entry):
@@ -113,13 +127,14 @@ def check_conflicts(new_entry):
         item_stime = datetime.datetime.strptime(item['start_time'], "%H:%M").time()
         item_etime = datetime.datetime.strptime(item['end_time'], "%H:%M").time()
 
-        # თარიღების გადაკვეთა
         date_overlap = not (new_edate < item_sdate or new_sdate > item_edate)
-        # საათების გადაკვეთა
         time_overlap = not (new_etime <= item_stime or new_stime >= item_etime)
 
         if date_overlap and time_overlap:
-            if item['auditorium'] == new_entry['auditorium']:
+            item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+            new_aud = "საკონფერენციო დარბაზი" if new_entry['auditorium'] == "აუდიტორია 5" else new_entry['auditorium']
+            
+            if item_aud == new_aud:
                 aud_conflicts.append(item)
             if item['lecturer'].strip().lower() == new_entry['lecturer'].strip().lower():
                 lec_conflicts.append(item)
@@ -198,18 +213,119 @@ with col_form:
                 st.success("✅ ჯგუფი წარმატებით შეინახა!")
                 st.rerun()
 
-# --- მარჯვენა პანელი: Real-Time და კვადრატებად დაყოფილი განრიგი (70%) ---
+# --- მარჯვენა პანელი: 3 ინტერაქტიული ტაბი (70%) ---
 with col_main:
     st.subheader("📊 სასწავლო განრიგის მონიტორინგი")
     
-    tab1, tab2 = st.tabs(["🏛️ 5 აუდიტორიის Real-Time სტატუსი", "📋 სრული განრიგი (ბარათებად დაყოფილი)"])
+    tab_matrix, tab_day, tab_cards = st.tabs([
+        "📅 კვირის ინტერაქტიული ბადე", 
+        "🏛️ 5 აუდიტორიის Real-Time სტატუსი", 
+        "📋 სრული განრიგი (ბარათები)"
+    ])
     
-    # 1. 5 აუდიტორიის სტატუსი (დღიური ხედი)
-    with tab1:
+    # ------------------ ტაბი 1: კვირის ინტერაქტიული ცხრილი ------------------
+    with tab_matrix:
+        today = datetime.date.today()
+        base_monday = today - datetime.timedelta(days=today.weekday())
+        current_monday = base_monday + datetime.timedelta(weeks=st.session_state.week_offset)
+        current_sunday = current_monday + datetime.timedelta(days=6)
+        week_dates = [current_monday + datetime.timedelta(days=i) for i in range(7)]
+
+        m1 = MONTHS_GE[current_monday.month]
+        m2 = MONTHS_GE[current_sunday.month]
+        if current_monday.month == current_sunday.month:
+            week_title = f"{current_monday.day} – {current_sunday.day} {m1}, {current_monday.year}"
+        else:
+            week_title = f"{current_monday.day} {m1} – {current_sunday.day} {m2}, {current_monday.year}"
+
+        # კვირის ნავიგაცია
+        nav1, nav2, nav3, nav4 = st.columns((1, 1, 1, 2))
+        with nav1:
+            if st.button("⬅️ წინა კვირა", key="prev_w"):
+                st.session_state.week_offset -= 1
+                st.rerun()
+        with nav2:
+            if st.button("📍 მიმდინარე კვირა", key="cur_w"):
+                st.session_state.week_offset = 0
+                st.rerun()
+        with nav3:
+            if st.button("შემდეგი კვირა ➡️", key="next_w"):
+                st.session_state.week_offset += 1
+                st.rerun()
+        with nav4:
+            jump_date = st.date_input("თარიღზე გადასვლა:", value=current_monday, key="week_jump")
+            jump_monday = jump_date - datetime.timedelta(days=jump_date.weekday())
+            new_off = (jump_monday - base_monday).days // 7
+            if new_off != st.session_state.week_offset:
+                st.session_state.week_offset = new_off
+                st.rerun()
+
+        st.markdown(f"#### 🗓️ {week_title}")
+
+        # ცხრილის მატრიცის გენერაცია
+        matrix_html = [
+            '<div style="overflow-x: auto; margin-top: 10px;">'
+            '<table style="width:100%; border-collapse: collapse; min-width: 950px; text-align: center; border-radius: 8px; overflow: hidden; border: 1.5px solid rgba(128,128,128,0.3);">'
+            '<thead><tr style="background-color: #1E3A8A; color: #FFFFFF;">'
+            '<th style="padding: 14px 10px; border: 1px solid rgba(128,128,128,0.3); width: 15%; font-size: 1.1rem;">აუდიტორია</th>'
+        ]
+
+        for d, name in zip(week_dates, DAY_NAMES_KA):
+            d_short = f"{d.day} {MONTHS_GE[d.month][:3]}"
+            is_today = (d == today)
+            bg_header = "#2563EB" if is_today else "#1E3A8A"
+            matrix_html.append(
+                f'<th style="padding: 12px 6px; border: 1px solid rgba(128,128,128,0.3); background-color: {bg_header}; font-size: 1.05rem;">'
+                f'<b>{name}</b><br><span style="font-size: 0.9rem; opacity: 0.9;">{d_short}</span>'
+                f'</th>'
+            )
+        matrix_html.append('</tr></thead><tbody>')
+
+        for aud in AUDITORIUMS:
+            matrix_html.append(
+                f'<tr style="border-bottom: 1px solid rgba(128,128,128,0.2);">'
+                f'<td style="padding: 14px 10px; font-weight: 800; font-size: 1.05rem; background-color: var(--secondary-background-color); color: var(--text-color); border: 1px solid rgba(128,128,128,0.3); vertical-align: middle;">'
+                f'{aud}'
+                f'</td>'
+            )
+
+            for d in week_dates:
+                d_str = str(d)
+                matching = []
+                for item in st.session_state.schedule:
+                    item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                    if item_aud == aud and (item['start_date'] <= d_str <= item['end_date']):
+                        matching.append(item)
+
+                matching.sort(key=lambda x: x['start_time'])
+
+                if matching:
+                    cell_content = '<td style="padding: 6px; vertical-align: top; border: 1px solid rgba(128,128,128,0.3); background-color: rgba(239, 68, 68, 0.08);">'
+                    for m in matching:
+                        cell_content += (
+                            f'<div style="background-color: var(--secondary-background-color); border: 1.5px solid #EF4444; border-radius: 8px; padding: 8px; margin-bottom: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); text-align: left;">'
+                            f'<div style="background-color: #EF4444; color: #FFFFFF; font-weight: 800; font-size: 0.95rem; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 4px;">⏰ {m["start_time"]} - {m["end_time"]}</div>'
+                            f'<div style="font-weight: 700; font-size: 0.95rem; color: var(--text-color); line-height: 1.2;">{m["subject"]}</div>'
+                            f'<div style="font-size: 0.85rem; color: var(--text-color); opacity: 0.85; margin-top: 2px;">{m["lecturer"]}</div>'
+                            f'</div>'
+                        )
+                    cell_content += '</td>'
+                    matrix_html.append(cell_content)
+                else:
+                    matrix_html.append(
+                        '<td style="padding: 12px; vertical-align: middle; border: 1px solid rgba(128,128,128,0.3); color: var(--text-color); opacity: 0.3; font-size: 1.1rem;">—</td>'
+                    )
+            matrix_html.append('</tr>')
+
+        matrix_html.append('</tbody></table></div>')
+        st.markdown("".join(matrix_html), unsafe_allow_html=True)
+
+    # ------------------ ტაბი 2: 5 აუდიტორიის Real-Time სტატუსი (დღიური) ------------------
+    with tab_day:
         selected_monitor_date = st.date_input(
             "აირჩიეთ თარიღი აუდიტორიების შესამოწმებლად:", 
             value=datetime.date.today(), 
-            key="mon_date"
+            key="mon_date_day"
         )
         sel_date_str = str(selected_monitor_date)
         
@@ -218,10 +334,11 @@ with col_main:
             with room_cols[i]:
                 st.markdown(f"### {room}")
                 
-                room_events = [
-                    item for item in st.session_state.schedule 
-                    if item['auditorium'] == room and (item['start_date'] <= sel_date_str <= item['end_date'])
-                ]
+                room_events = []
+                for item in st.session_state.schedule:
+                    item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                    if item_aud == room and (item['start_date'] <= sel_date_str <= item['end_date']):
+                        room_events.append(item)
                 room_events.sort(key=lambda x: x['start_time'])
                 
                 if room_events:
@@ -244,12 +361,11 @@ with col_main:
                     )
                     st.markdown(free_html, unsafe_allow_html=True)
 
-    # 2. სრული განრიგი კვადრატებად (Grid Cards)
-    with tab2:
+    # ------------------ ტაბი 3: სრული განრიგი (კვადრატული ბარათები) ------------------
+    with tab_cards:
         if not st.session_state.schedule:
             st.info("განრიგში ჯერ მონაცემები არ არის. დაამატეთ ახალი ჯგუფი მარცხენა პანელიდან.")
         else:
-            # ფილტრები
             f_col1, f_col2 = st.columns(2)
             with f_col1:
                 filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
@@ -258,15 +374,15 @@ with col_main:
 
             filtered_data = []
             for idx, item in enumerate(st.session_state.schedule):
-                if item['auditorium'] in filter_aud:
+                item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                if item_aud in filter_aud:
                     text_blob = f"{item['university']} {item['subject']} {item['lecturer']}".lower()
                     if not filter_search or filter_search.lower() in text_blob:
-                        filtered_data.append({**item, "_idx": idx})
+                        filtered_data.append({**item, "_idx": idx, "display_aud": item_aud})
 
             if filtered_data:
                 st.markdown(f"**სულ ნაპოვნია: {len(filtered_data)} ჯგუფი**")
                 
-                # კვადრატებად დაყოფა 2 სვეტად
                 grid_cols = st.columns(2)
                 for i, row in enumerate(filtered_data):
                     target_col = grid_cols[i % 2]
@@ -275,7 +391,7 @@ with col_main:
                             f'<div class="schedule-card">'
                             f'<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">'
                             f'<span style="font-size: 1.25rem; font-weight: 800; color: var(--text-color);">{row["subject"]}</span>'
-                            f'<span style="background-color: #2563EB; color: #FFFFFF; font-size: 0.95rem; font-weight: 700; padding: 4px 10px; border-radius: 6px;">{row["auditorium"]}</span>'
+                            f'<span style="background-color: #2563EB; color: #FFFFFF; font-size: 0.95rem; font-weight: 700; padding: 4px 10px; border-radius: 6px;">{row["display_aud"]}</span>'
                             f'</div>'
                             f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>👨‍🏫 ლექტორი:</b> {row["lecturer"]}</div>'
                             f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>🏛️ უნივერსიტეტი:</b> {row["university"]}</div>'
@@ -287,11 +403,10 @@ with col_main:
                         )
                         st.markdown(card_html, unsafe_allow_html=True)
 
-                # ჩანაწერის წაშლა
                 st.markdown("---")
                 with st.expander("🗑️ ჩანაწერის წაშლა"):
                     del_options = {
-                        f"#{i+1} {d['subject']} ({d['auditorium']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": d['_idx'] 
+                        f"#{i+1} {d['subject']} ({d['display_aud']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": d['_idx'] 
                         for i, d in enumerate(filtered_data)
                     }
                     to_delete = st.selectbox("აირჩიეთ წასაშლელი ლექცია:", list(del_options.keys()))
@@ -304,7 +419,6 @@ with col_main:
             else:
                 st.warning("მითითებული ფილტრით ჩანაწერი არ მოიძებნა.")
 
-            # CSV ექსპორტი
             st.markdown("---")
             df_export = pd.DataFrame(st.session_state.schedule)
             csv_bytes = df_export.to_csv(index=False).encode('utf-8-sig')
