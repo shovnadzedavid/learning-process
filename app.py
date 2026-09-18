@@ -249,7 +249,7 @@ with col_main:
         if not st.session_state.schedule:
             st.info("განრიგში ჯერ მონაცემები არ არის. დაამატეთ ახალი ჯგუფი მარცხენა პანელიდან.")
         else:
-            # ფილტრები - აქ გასწორდა st.columns(2)
+            # ფილტრები
             f_col1, f_col2 = st.columns(2)
             with f_col1:
                 filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
