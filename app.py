@@ -130,7 +130,7 @@ def check_conflicts(new_entry):
 st.title("🎓 სასწავლო პროცესის ორგანიზებისა და განრიგის სოფტი")
 
 # განლაგება: ეკრანის ~30% ფორმა, ~70% მთავარი პანელი
-col_form, col_main = st.columns([3, 7], gap="large")
+col_form, col_main = st.columns(, gap="large")
 
 # --- მარცხენა პანელი: ფორმა (30%) ---
 with col_form:
@@ -249,8 +249,8 @@ with col_main:
         if not st.session_state.schedule:
             st.info("განრიგში ჯერ მონაცემები არ არის. დაამატეთ ახალი ჯგუფი მარცხენა პანელიდან.")
         else:
-            # ფილტრები
-            f_col1, f_col2 = st.columns()
+            # ფილტრები - აქ გასწორდა st.columns(2)
+            f_col1, f_col2 = st.columns(2)
             with f_col1:
                 filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
             with f_col2:
