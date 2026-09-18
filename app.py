@@ -252,3 +252,65 @@ with col_main:
             # ფილტრები
             f_col1, f_col2 = st.columns()
             with f_col1:
+                filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
+            with f_col2:
+                filter_search = st.text_input("ძიება (უნივერსიტეტი, საგანი, ლექტორი):", "")
+
+            filtered_data = []
+            for idx, item in enumerate(st.session_state.schedule):
+                if item['auditorium'] in filter_aud:
+                    text_blob = f"{item['university']} {item['subject']} {item['lecturer']}".lower()
+                    if not filter_search or filter_search.lower() in text_blob:
+                        filtered_data.append({**item, "_idx": idx})
+
+            if filtered_data:
+                st.markdown(f"**სულ ნაპოვნია: {len(filtered_data)} ჯგუფი**")
+                
+                # კვადრატებად დაყოფა 2 სვეტად
+                grid_cols = st.columns(2)
+                for i, row in enumerate(filtered_data):
+                    target_col = grid_cols[i % 2]
+                    with target_col:
+                        card_html = (
+                            f'<div class="schedule-card">'
+                            f'<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">'
+                            f'<span style="font-size: 1.25rem; font-weight: 800; color: var(--text-color);">{row["subject"]}</span>'
+                            f'<span style="background-color: #2563EB; color: #FFFFFF; font-size: 0.95rem; font-weight: 700; padding: 4px 10px; border-radius: 6px;">{row["auditorium"]}</span>'
+                            f'</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>👨‍🏫 ლექტორი:</b> {row["lecturer"]}</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>🏛️ უნივერსიტეტი:</b> {row["university"]}</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 10px;"><b>📅 პერიოდი:</b> {row["start_date"]} — {row["end_date"]}</div>'
+                            f'<div style="display: inline-block; background-color: rgba(37, 99, 235, 0.15); border: 1.5px solid #2563EB; color: var(--text-color); font-size: 1.1rem; font-weight: 800; padding: 5px 12px; border-radius: 8px;">'
+                            f'⏰ {row["start_time"]} – {row["end_time"]}'
+                            f'</div>'
+                            f'</div>'
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
+
+                # ჩანაწერის წაშლა
+                st.markdown("---")
+                with st.expander("🗑️ ჩანაწერის წაშლა"):
+                    del_options = {
+                        f"#{i+1} {d['subject']} ({d['auditorium']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": d['_idx'] 
+                        for i, d in enumerate(filtered_data)
+                    }
+                    to_delete = st.selectbox("აირჩიეთ წასაშლელი ლექცია:", list(del_options.keys()))
+                    if st.button("ჩანაწერის წაშლა"):
+                        idx_to_del = del_options[to_delete]
+                        st.session_state.schedule.pop(idx_to_del)
+                        save_data(st.session_state.schedule)
+                        st.success("ჩანაწერი წაშლილია!")
+                        st.rerun()
+            else:
+                st.warning("მითითებული ფილტრით ჩანაწერი არ მოიძებნა.")
+
+            # CSV ექსპორტი
+            st.markdown("---")
+            df_export = pd.DataFrame(st.session_state.schedule)
+            csv_bytes = df_export.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 მონაცემების გადმოწერა (CSV ფორმატში)",
+                data=csv_bytes,
+                file_name="lecture_schedule.csv",
+                mime="text/csv"
+            )
