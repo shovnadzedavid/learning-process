@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import os
 
-# გვერდის კონფიგურაცია - Wide რეჟიმი (მაქსიმალური ეკრანის სიგანე)
+# გვერდის კონფიგურაცია - Wide რეჟიმი
 st.set_page_config(
     page_title="სასწავლო განრიგის მართვის სისტემა",
     page_icon="🎓",
@@ -151,6 +151,10 @@ def load_data():
             for r in records:
                 if r.get('auditorium') == 'აუდიტორია 5':
                     r['auditorium'] = 'საკონფერენციო დარბაზი'
+                if 'include_saturday' not in r:
+                    r['include_saturday'] = False
+                if 'include_sunday' not in r:
+                    r['include_sunday'] = False
             return records
         except Exception:
             return []
@@ -164,14 +168,32 @@ def save_data(data_list):
 if 'schedule' not in st.session_state:
     st.session_state.schedule = load_data()
 
-# კვირის მართვა
+# კვირის ინიციალიზაცია
 today = datetime.date.today()
 base_monday = today - datetime.timedelta(days=today.weekday())
 
 if 'current_monday' not in st.session_state:
     st.session_state.current_monday = base_monday
 
-# კონფლიქტების შემოწმების ფუნქცია
+# ამოწმებს, აქტიურია თუ არა ლექცია კონკრეტულ თარიღზე (შაბათ-კვირის გათვალისწინებით)
+def is_event_active_on_date(item, date_obj):
+    sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
+    edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
+    if not (sdate <= date_obj <= edate):
+        return False
+    
+    # 5 = შაბათი, 6 = კვირა
+    is_sat = bool(item.get('include_saturday', False))
+    is_sun = bool(item.get('include_sunday', False))
+    
+    if date_obj.weekday() == 5 and not is_sat:
+        return False
+    if date_obj.weekday() == 6 and not is_sun:
+        return False
+        
+    return True
+
+# კონფლიქტების შემოწმება
 def check_conflicts(new_entry):
     new_sdate = datetime.datetime.strptime(new_entry['start_date'], "%Y-%m-%d").date()
     new_edate = datetime.datetime.strptime(new_entry['end_date'], "%Y-%m-%d").date()
@@ -182,21 +204,38 @@ def check_conflicts(new_entry):
     lec_conflicts = []
 
     for item in st.session_state.schedule:
-        item_sdate = datetime.datetime.strptime(item['start_date'], "%Y-%m-%d").date()
-        item_edate = datetime.datetime.strptime(item['end_date'], "%Y-%m-%d").date()
-        item_stime = datetime.datetime.strptime(item['start_time'], "%H:%M").time()
-        item_etime = datetime.datetime.strptime(item['end_time'], "%H:%M").time()
+        item_sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
+        item_edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
+        item_stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M").time()
+        item_etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M").time()
 
-        date_overlap = not (new_edate < item_sdate or new_sdate > item_edate)
+        # საათების გადაკვეთა
         time_overlap = not (new_etime <= item_stime or new_stime >= item_etime)
+        if not time_overlap:
+            continue
 
-        if date_overlap and time_overlap:
+        # თარიღების ინტერვალის გადაკვეთა
+        overlap_start = max(new_sdate, item_sdate)
+        overlap_end = min(new_edate, item_edate)
+        if overlap_start > overlap_end:
+            continue
+
+        # შევამოწმოთ, არის თუ არა თუნდაც 1 საერთო აქტიური დღე
+        has_common_active_day = False
+        cur_d = overlap_start
+        while cur_d <= overlap_end:
+            if is_event_active_on_date(new_entry, cur_d) and is_event_active_on_date(item, cur_d):
+                has_common_active_day = True
+                break
+            cur_d += datetime.timedelta(days=1)
+
+        if has_common_active_day:
             item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
             new_aud = "საკონფერენციო დარბაზი" if new_entry['auditorium'] == "აუდიტორია 5" else new_entry['auditorium']
             
             if item_aud == new_aud:
                 aud_conflicts.append(item)
-            if item['lecturer'].strip().lower() == new_entry['lecturer'].strip().lower():
+            if str(item['lecturer']).strip().lower() == str(new_entry['lecturer']).strip().lower():
                 lec_conflicts.append(item)
 
     return aud_conflicts, lec_conflicts
@@ -207,7 +246,7 @@ selected_page = st.radio(
     (
         "📅 კვირის სრული ბადე (სრული ეკრანი)", 
         "➕ ახალი ჯგუფის დამატება & მართვა", 
-        "🏛️ დღიური მონიტორინგი & სია"
+        "📊 საათების რეპორტი & მონიტორინგი"
     ),
     horizontal=True,
     label_visibility="collapsed"
@@ -278,14 +317,13 @@ if selected_page == "📅 კვირის სრული ბადე (ს�
         )
 
         for d in week_dates:
-            d_str = str(d)
             matching = []
             for item in st.session_state.schedule:
                 item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
-                if item_aud == aud and (item['start_date'] <= d_str <= item['end_date']):
+                if item_aud == aud and is_event_active_on_date(item, d):
                     matching.append(item)
 
-            matching.sort(key=lambda x: x['start_time'])
+            matching.sort(key=lambda x: str(x['start_time']))
 
             if matching:
                 grid_html.append('<td style="background-color: rgba(239, 68, 68, 0.06); min-width: 135px;">')
@@ -335,6 +373,16 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
             with c_t2:
                 end_time = st.time_input("დასრულების საათი*", value=datetime.time(12, 0))
 
+            # შაბათისა და კვირის ცალ-ცალკე მონიშვნა
+            st.markdown("<b>📅 უქმე დღეების ჩართვა (არასავალდებულო):</b>", unsafe_allow_html=True)
+            c_sat, c_sun = st.columns(2)
+            with c_sat:
+                include_sat = st.checkbox("შაბათის ჩათვლით", value=False)
+            with c_sun:
+                include_sun = st.checkbox("კვირის ჩათვლით", value=False)
+
+            st.caption("ℹ️ თუ არ მონიშნავთ, ლექცია ჩაისმება მხოლოდ ორშაბათიდან პარასკევის ჩათვლით.")
+
             submitted = st.form_submit_button("💾 ჯგუფის შენახვა")
 
         if submitted:
@@ -353,7 +401,9 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
                     "start_date": str(start_date),
                     "end_date": str(end_date),
                     "start_time": start_time.strftime("%H:%M"),
-                    "end_time": end_time.strftime("%H:%M")
+                    "end_time": end_time.strftime("%H:%M"),
+                    "include_saturday": bool(include_sat),
+                    "include_sunday": bool(include_sun)
                 }
 
                 aud_conflicts, lec_conflicts = check_conflicts(new_entry)
@@ -407,14 +457,84 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
             )
 
 # ==============================================================================
-# გვერდი 3: დღიური მონიტორინგი & სია
+# გვერდი 3: საათების რეპორტი & მონიტორინგი
 # ==============================================================================
-elif selected_page == "🏛️ დღიური მონიტორინგი & სია":
-    tab_day, tab_cards = st.tabs(["🏛️ 5 აუდიტორიის დღიური სტატუსი", "📋 ყველა ჯგუფის ბარათები"])
-    
+elif selected_page == "📊 საათების რეპორტი & მონიტორინგი":
+    tab_report, tab_day, tab_cards = st.tabs([
+        "📊 ლექტორების საათების რეპორტი", 
+        "🏛️ 5 აუდიტორიის დღიური სტატუსი", 
+        "📋 ყველა ჯგუფის ბარათები"
+    ])
+
+    # 1. საათების ზუსტი რეპორტი
+    with tab_report:
+        st.subheader("📊 ლექტორების ჩატარებული საათების რეპორტი")
+        st.caption("ℹ️ საათები ზუსტად ითვლება იმ დღეების მიხედვით, როდესაც ლექცია რეალურად ტარდება (შაბათ-კვირის გათვალისწინებით).")
+
+        if not st.session_state.schedule:
+            st.info("რეპორტისთვის მონაცემები ჯერ არ არის.")
+        else:
+            lecturer_summary = {}
+
+            for item in st.session_state.schedule:
+                lec = str(item['lecturer']).strip()
+                sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
+                edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
+                
+                stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M")
+                etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M")
+                session_duration = (etime - stime).total_seconds() / 3600.0
+
+                actual_sessions = 0
+                cur_d = sdate
+                while cur_d <= edate:
+                    if is_event_active_on_date(item, cur_d):
+                        actual_sessions += 1
+                    cur_d += datetime.timedelta(days=1)
+
+                item_total_hours = round(actual_sessions * session_duration, 2)
+
+                if lec not in lecturer_summary:
+                    lecturer_summary[lec] = {
+                        "ლექტორი": lec,
+                        "უნივერსიტეტი": set(),
+                        "საგნები": set(),
+                        "ლექციების რაოდენობა": 0,
+                        "სრული საათები": 0.0
+                    }
+
+                lecturer_summary[lec]["უნივერსიტეტი"].add(str(item['university']))
+                lecturer_summary[lec]["საგნები"].add(str(item['subject']))
+                lecturer_summary[lec]["ლექციების რაოდენობა"] += actual_sessions
+                lecturer_summary[lec]["სრული საათები"] += item_total_hours
+
+            report_rows = []
+            for lec, data in lecturer_summary.items():
+                report_rows.append({
+                    "ლექტორი": data["ლექტორი"],
+                    "უნივერსიტეტი": ", ".join(data["უნივერსიტეტი"]),
+                    "საგნები": ", ".join(data["საგნები"]),
+                    "სულ ლექციები": data["ლექციების რაოდენობა"],
+                    "სრული საათები": round(data["სრული საათები"], 2)
+                })
+
+            df_rep = pd.DataFrame(report_rows)
+            df_rep.sort_values(by="სრული საათები", ascending=False, inplace=True)
+            
+            st.dataframe(df_rep, use_container_width=True, hide_index=True)
+
+            csv_rep_bytes = df_rep.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 ლექტორების საათების რეპორტის გადმოწერა (CSV)",
+                data=csv_rep_bytes,
+                file_name="lecturers_hours_report.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+    # 2. დღიური მონიტორინგი
     with tab_day:
         selected_monitor_date = st.date_input("აირჩიეთ თარიღი:", value=datetime.date.today(), key="mon_day_p3")
-        sel_date_str = str(selected_monitor_date)
         
         room_cols = st.columns(5)
         for i, room in enumerate(AUDITORIUMS):
@@ -422,9 +542,10 @@ elif selected_page == "🏛️ დღიური მონიტორინგ
                 st.markdown(f"### {room}")
                 room_events = [
                     item for item in st.session_state.schedule 
-                    if item['auditorium'] == room and (item['start_date'] <= sel_date_str <= item['end_date'])
+                    if (item['auditorium'] == room or (item['auditorium'] == 'აუდიტორია 5' and room == 'საკონფერენციო დარბაზი'))
+                    and is_event_active_on_date(item, selected_monitor_date)
                 ]
-                room_events.sort(key=lambda x: x['start_time'])
+                room_events.sort(key=lambda x: str(x['start_time']))
                 
                 if room_events:
                     for ev in room_events:
@@ -446,6 +567,7 @@ elif selected_page == "🏛️ დღიური მონიტორინგ
                     )
                     st.markdown(free_html, unsafe_allow_html=True)
 
+    # 3. ყველა ჯგუფის ბარათები
     with tab_cards:
         if not st.session_state.schedule:
             st.info("განრიგში ჯერ მონაცემები არ არის.")
@@ -458,7 +580,8 @@ elif selected_page == "🏛️ დღიური მონიტორინგ
 
             filtered_data = []
             for idx, item in enumerate(st.session_state.schedule):
-                if item['auditorium'] in filter_aud:
+                item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                if item_aud in filter_aud:
                     text_blob = f"{item['university']} {item['subject']} {item['lecturer']}".lower()
                     if not filter_search or filter_search.lower() in text_blob:
                         filtered_data.append(item)
@@ -467,6 +590,10 @@ elif selected_page == "🏛️ დღიური მონიტორინგ
                 grid_cols = st.columns(2)
                 for i, row in enumerate(filtered_data):
                     target_col = grid_cols[i % 2]
+                    sat_label = " • შაბათი" if row.get('include_saturday') else ""
+                    sun_label = " • კვირა" if row.get('include_sunday') else ""
+                    days_note = f"ორშ-პარ{sat_label}{sun_label}"
+                    
                     with target_col:
                         card_html = (
                             f'<div class="schedule-card" style="background-color: var(--secondary-background-color); border: 1.5px solid rgba(128, 128, 128, 0.25); border-radius: 12px; padding: 18px; margin-bottom: 16px;">'
@@ -476,7 +603,8 @@ elif selected_page == "🏛️ დღიური მონიტორინგ
                             f'</div>'
                             f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>👨‍🏫 ლექტორი:</b> {row["lecturer"]}</div>'
                             f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>🏛️ უნივერსიტეტი:</b> {row["university"]}</div>'
-                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 10px;"><b>📅 პერიოდი:</b> {row["start_date"]} — {row["end_date"]}</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>📅 პერიოდი:</b> {row["start_date"]} — {row["end_date"]}</div>'
+                            f'<div style="font-size: 0.95rem; color: #2563EB; font-weight: 700; margin-bottom: 10px;">📆 დღეები: {days_note}</div>'
                             f'<div style="display: inline-block; background-color: rgba(37, 99, 235, 0.15); border: 1.5px solid #2563EB; color: var(--text-color); font-size: 1.1rem; font-weight: 800; padding: 5px 12px; border-radius: 8px;">'
                             f'⏰ {row["start_time"]} – {row["end_time"]}'
                             f'</div>'
