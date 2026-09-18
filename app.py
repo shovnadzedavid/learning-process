@@ -21,14 +21,14 @@ MONTHS_GE = {
     9: "სექტემბერი", 10: "ოქტომბერი", 11: "ნოემბერი", 12: "დეკემბერი"
 }
 
-# CSS სტილები - სრული ეკრანის, Dark/Light თავსებადი და დიდი ტექსტით
+# CSS სტილები - Dark / Light რეჟიმებთან სრული თავსებადობით
 st.markdown("""
 <style>
     html, body, [class*="css"] {
         font-size: 16px;
     }
 
-    /* ზედა მენიუს ღილაკები */
+    /* ზედა მენიუს ღილაკების სტილი */
     div[role="radiogroup"] {
         background-color: var(--secondary-background-color);
         padding: 6px;
@@ -164,14 +164,14 @@ def save_data(data_list):
 if 'schedule' not in st.session_state:
     st.session_state.schedule = load_data()
 
-# კვირის ინიციალიზაცია
+# კვირის მართვა
 today = datetime.date.today()
 base_monday = today - datetime.timedelta(days=today.weekday())
 
 if 'current_monday' not in st.session_state:
     st.session_state.current_monday = base_monday
 
-# კონფლიქტების შემოწმება
+# კონფლიქტების შემოწმების ფუნქცია
 def check_conflicts(new_entry):
     new_sdate = datetime.datetime.strptime(new_entry['start_date'], "%Y-%m-%d").date()
     new_edate = datetime.datetime.strptime(new_entry['end_date'], "%Y-%m-%d").date()
@@ -201,14 +201,14 @@ def check_conflicts(new_entry):
 
     return aud_conflicts, lec_conflicts
 
-# ზედა მთავარი ნავიგაცია
+# ზედა ნავიგაცია
 selected_page = st.radio(
     "გვერდის არჩევა",
-    [
+    (
         "📅 კვირის სრული ბადე (სრული ეკრანი)", 
         "➕ ახალი ჯგუფის დამატება & მართვა", 
         "🏛️ დღიური მონიტორინგი & სია"
-    ],
+    ),
     horizontal=True,
     label_visibility="collapsed"
 )
@@ -230,7 +230,6 @@ if selected_page == "📅 კვირის სრული ბადე (ს�
 
     st.markdown(f"## 📅 {week_label}")
 
-    # კვირის გადართვის ნავიგაცია
     n_col1, n_col2, n_col3, n_col4 = st.columns((1, 1, 1, 2))
     with n_col1:
         if st.button("⬅️ წინა კვირა", key="btn_prev", use_container_width=True):
@@ -253,9 +252,9 @@ if selected_page == "📅 კვირის სრული ბადე (ს�
 
     # სრულეკრანიანი ცხრილი
     grid_html = [
-        '<div style="overflow-x: auto; margin-top: 15px;">'
-        '<table class="full-grid-table">'
-        '<thead><tr>'
+        '<div style="overflow-x: auto; margin-top: 15px;">',
+        '<table class="full-grid-table">',
+        '<thead><tr>',
         '<th style="width: 14%; min-width: 160px;">აუდიტორია</th>'
     ]
 
@@ -368,16 +367,16 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
                 elif aud_conflicts:
                     st.error("❌ აუდიტორია დაკავებულია")
                     for c in aud_conflicts:
-                        st.warning(f"📌 {c['auditorium']}: უკვე დაკავებულია საგნით '{c['subject']}' ({c['lecturer']}) [{c['start_time']} - {c['end_time']}]")
+                        st.warning(f"📌 {c['auditorium']}: უკვე დაკავებულია საგნით '{c['subject']}' ({c['lecturer']}) ({c['start_time']} - {c['end_time']})")
                 elif lec_conflicts:
                     st.error("❌ ლექტორი დაკავებულია")
                     for c in lec_conflicts:
-                        st.warning(f"📌 ლექტორი {c['lecturer']} უკვე დაკავებულია საგნით '{c['subject']}' [{c['start_time']} - {c['end_time']}]")
-            else:
-                st.session_state.schedule.append(new_entry)
-                save_data(st.session_state.schedule)
-                st.success("✅ ჯგუფი წარმატებით შეინახა!")
-                st.rerun()
+                        st.warning(f"📌 ლექტორი {c['lecturer']} უკვე დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
+                else:
+                    st.session_state.schedule.append(new_entry)
+                    save_data(st.session_state.schedule)
+                    st.success("✅ ჯგუფი წარმატებით შეინახა!")
+                    st.rerun()
 
     with col_list:
         st.subheader("📋 არსებული ჯგუფები და წაშლა")
