@@ -3,7 +3,7 @@ import pandas as pd
 import datetime
 import os
 
-# გვერდის კონფიგურაცია - Wide რეჟიმი (მთელი ეკრანის ასათვისებლად)
+# გვერდის კონფიგურაცია - Wide რეჟიმი
 st.set_page_config(
     page_title="სასწავლო ცხრილის მართვის სისტემა",
     page_icon="🎓",
@@ -11,11 +11,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# მონაცემთა ფაილი ავტომატური შენახვისთვის (Persistence)
+# მონაცემთა ფაილი
 DATA_FILE = "schedule_data.csv"
 AUDITORIUMS = ["აუდიტორია 1", "აუდიტორია 2", "აუდიტორია 3", "აუდიტორია 4", "აუდიტორია 5"]
 
-# CSS სტილები დიდი, მსხვილი და მკაფიო ვიზუალისთვის (ეკრანის 70%-ის ხედით)
+# CSS სტილები - Dark / Light რეჟიმებთან სრული თავსებადობით
 st.markdown("""
 <style>
     html, body, [class*="css"] {
@@ -23,77 +23,63 @@ st.markdown("""
     }
     
     h1 {
-        font-size: 2.2rem !important;
+        font-size: 2.1rem !important;
         font-weight: 800 !important;
-        color: #1E3A8A;
-        margin-bottom: 1rem !important;
+        margin-bottom: 0.8rem !important;
+        color: var(--text-color) !important;
     }
     h2, h3 {
         font-weight: 700 !important;
-        color: #1E293B;
-    }
-
-    /* დიდი და მსხვილი ცხრილის სტილი */
-    .styled-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 15px 0;
-        font-size: 1.1rem;
-        text-align: left;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    .styled-table thead tr {
-        background-color: #1E3A8A;
-        color: #ffffff;
-        text-align: left;
-        font-weight: bold;
-        font-size: 1.15rem;
-    }
-    .styled-table th, .styled-table td {
-        padding: 14px 16px;
-        border-bottom: 1px solid #CBD5E1;
-    }
-    .styled-table tbody tr:nth-of-type(even) {
-        background-color: #F8FAFC;
-    }
-    .styled-table tbody tr:hover {
-        background-color: #EEF2F6;
-        font-weight: 600;
+        color: var(--text-color) !important;
     }
 
     /* აუდიტორიის მონიტორინგის ბარათები */
-    .room-card {
-        border-radius: 10px;
-        padding: 14px;
-        margin-bottom: 12px;
-        background-color: #FFFFFF;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.06);
+    .room-box {
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.08);
     }
-    .room-free {
-        border-left: 6px solid #10B981;
-        background-color: #ECFDF5;
-    }
+    
     .room-busy {
-        border-left: 6px solid #EF4444;
-        background-color: #FEF2F2;
+        background-color: rgba(239, 68, 68, 0.14) !important;
+        border: 2px solid #EF4444 !important;
+    }
+    
+    .room-free {
+        background-color: rgba(16, 185, 129, 0.14) !important;
+        border: 2px solid #10B981 !important;
     }
 
-    /* შენახვის ღილაკის სტილი */
+    /* სრული განრიგის კვადრატული ბარათები */
+    .schedule-card {
+        background-color: var(--secondary-background-color) !important;
+        border: 1.5px solid rgba(128, 128, 128, 0.25) !important;
+        border-radius: 12px;
+        padding: 18px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.06);
+    }
+
+    /* ღილაკის სტილი */
     .stButton>button {
         width: 100%;
         font-size: 1.15rem !important;
         font-weight: 700 !important;
         padding: 0.65rem 1rem !important;
         border-radius: 8px !important;
-        background-color: #1E3A8A !important;
-        color: white !important;
+        background-color: #2563EB !important;
+        color: #FFFFFF !important;
+        border: none !important;
+    }
+    .stButton>button:hover {
+        background-color: #1D4ED8 !important;
+        color: #FFFFFF !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# მონაცემების ჩატვირთვა ფაილიდან
+# მონაცემების ჩატვირთვა
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
@@ -103,7 +89,7 @@ def load_data():
             return []
     return []
 
-# მონაცემების შენახვა CSV-ში
+# მონაცემების შენახვა
 def save_data(data_list):
     df = pd.DataFrame(data_list)
     df.to_csv(DATA_FILE, index=False)
@@ -111,7 +97,7 @@ def save_data(data_list):
 if 'schedule' not in st.session_state:
     st.session_state.schedule = load_data()
 
-# გადაკვეთების (კონფლიქტების) შემოწმების ლოგიკა
+# გადაკვეთის შემოწმების ალგორითმი
 def check_conflicts(new_entry):
     new_sdate = datetime.datetime.strptime(new_entry['start_date'], "%Y-%m-%d").date()
     new_edate = datetime.datetime.strptime(new_entry['end_date'], "%Y-%m-%d").date()
@@ -127,17 +113,14 @@ def check_conflicts(new_entry):
         item_stime = datetime.datetime.strptime(item['start_time'], "%H:%M").time()
         item_etime = datetime.datetime.strptime(item['end_time'], "%H:%M").time()
 
-        # თარიღების გადაკვეთა: [start1, end1] იკვეთება [start2, end2]-თან
+        # თარიღების გადაკვეთა
         date_overlap = not (new_edate < item_sdate or new_sdate > item_edate)
-
-        # საათების გადაკვეთა: [time1, endtime1] იკვეთება [time2, endtime2]-თან
+        # საათების გადაკვეთა
         time_overlap = not (new_etime <= item_stime or new_stime >= item_etime)
 
         if date_overlap and time_overlap:
-            # აუდიტორიის დაკავებულობის შემოწმება
             if item['auditorium'] == new_entry['auditorium']:
                 aud_conflicts.append(item)
-            # ლექტორის დაკავებულობის შემოწმება
             if item['lecturer'].strip().lower() == new_entry['lecturer'].strip().lower():
                 lec_conflicts.append(item)
 
@@ -146,10 +129,10 @@ def check_conflicts(new_entry):
 # მთავარი სათაური
 st.title("🎓 სასწავლო პროცესის ორგანიზებისა და განრიგის სოფტი")
 
-# განლაგება: ეკრანის ~30% ფორმა, ~70% ცხრილი და რეალური დროის მონიტორინგი
+# განლაგება: ეკრანის ~30% ფორმა, ~70% მთავარი პანელი
 col_form, col_main = st.columns([3, 7], gap="large")
 
-# --- მარცხენა მხარე: ფორმა (30%) ---
+# --- მარცხენა პანელი: ფორმა (30%) ---
 with col_form:
     st.subheader("➕ ახალი ჯგუფის დამატება")
     st.markdown("---")
@@ -175,7 +158,6 @@ with col_form:
         submitted = st.form_submit_button("💾 ჯგუფის შენახვა")
 
     if submitted:
-        # ვალიდაცია
         if not university.strip() or not subject.strip() or not lecturer.strip():
             st.error("⚠️ გთხოვთ შეავსოთ ყველა სავალდებულო ველი!")
         elif start_date > end_date:
@@ -196,13 +178,12 @@ with col_form:
 
             aud_conflicts, lec_conflicts = check_conflicts(new_entry)
 
-            # შეტყობინებები მოთხოვნის შესაბამისად
             if aud_conflicts and lec_conflicts:
                 st.error("❌ ლექტორი დაკავებულია და აუდიტორია დაკავებულია")
                 for c in aud_conflicts:
-                    st.warning(f"📌 {c['auditorium']}: უკვე დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
+                    st.warning(f"📌 {c['auditorium']}: დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
                 for c in lec_conflicts:
-                    st.warning(f"📌 {c['lecturer']}: უკვე კითხულობს ლექციას '{c['subject']}' ({c['start_time']} - {c['end_time']})")
+                    st.warning(f"📌 {c['lecturer']}: დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
             elif aud_conflicts:
                 st.error("❌ აუდიტორია დაკავებულია")
                 for c in aud_conflicts:
@@ -212,34 +193,31 @@ with col_form:
                 for c in lec_conflicts:
                     st.warning(f"📌 ლექტორი {c['lecturer']} უკვე დაკავებულია საგნით '{c['subject']}' [{c['start_time']} - {c['end_time']}]")
             else:
-                # კონფლიქტი არ არის -> შენახვა
                 st.session_state.schedule.append(new_entry)
                 save_data(st.session_state.schedule)
                 st.success("✅ ჯგუფი წარმატებით შეინახა!")
                 st.rerun()
 
-# --- მარჯვენა მხარე: ინტერაქტიული ცხრილი და Real-Time მონიტორინგი (70%) ---
+# --- მარჯვენა პანელი: Real-Time და კვადრატებად დაყოფილი განრიგი (70%) ---
 with col_main:
     st.subheader("📊 სასწავლო განრიგის მონიტორინგი")
     
-    tab1, tab2 = st.tabs(["🏛️ 5 აუდიტორიის Real-Time სტატუსი", "📋 სრული ცხრილი"])
+    tab1, tab2 = st.tabs(["🏛️ 5 აუდიტორიის Real-Time სტატუსი", "📋 სრული განრიგი (ბარათებად დაყოფილი)"])
     
-    # 1. 5 აუდიტორიის სტატუსი კონკრეტულ თარიღზე
+    # 1. 5 აუდიტორიის სტატუსი (დღიური ხედი)
     with tab1:
         selected_monitor_date = st.date_input(
-            "აირჩიეთ თარიღი აუდიტორიების გადასამოწმებლად:", 
+            "აირჩიეთ თარიღი აუდიტორიების შესამოწმებლად:", 
             value=datetime.date.today(), 
             key="mon_date"
         )
         sel_date_str = str(selected_monitor_date)
         
-        # 5 აუდიტორიის სვეტებად გადანაწილება
         room_cols = st.columns(5)
         for i, room in enumerate(AUDITORIUMS):
             with room_cols[i]:
                 st.markdown(f"### {room}")
                 
-                # მოვძებნოთ მიმდინარე ლექციები ამ აუდიტორიაში
                 room_events = [
                     item for item in st.session_state.schedule 
                     if item['auditorium'] == room and (item['start_date'] <= sel_date_str <= item['end_date'])
@@ -248,98 +226,29 @@ with col_main:
                 
                 if room_events:
                     for ev in room_events:
-                        st.markdown(f"""
-                        <div class="room-card room-busy">
-                            <b style="font-size:1.15rem; color:#991B1B;">⛔ {ev['start_time']} - {ev['end_time']}</b><br>
-                            <b>საგანი:</b> {ev['subject']}<br>
-                            <b>ლექტორი:</b> {ev['lecturer']}<br>
-                            <span style="font-size:0.9rem; color:#4B5563;">{ev['university']}</span>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        card_html = (
+                            f'<div class="room-box room-busy">'
+                            f'<div style="background-color: #EF4444; color: #FFFFFF; padding: 4px 8px; border-radius: 6px; font-weight: 800; display: inline-block; margin-bottom: 8px; font-size: 1.05rem;">⛔ {ev["start_time"]} - {ev["end_time"]}</div>'
+                            f'<div style="font-size: 1.1rem; font-weight: 800; color: var(--text-color); margin-bottom: 4px;">{ev["subject"]}</div>'
+                            f'<div style="font-size: 1.0rem; color: var(--text-color); margin-bottom: 4px;"><b>ლექტორი:</b> {ev["lecturer"]}</div>'
+                            f'<div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.85;"><b>უნივერსიტეტი:</b> {ev["university"]}</div>'
+                            f'</div>'
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
                 else:
-                    st.markdown("""
-                    <div class="room-card room-free">
-                        <b style="color:#065F46; font-size:1.1rem;">✅ თავისუფალია</b><br>
-                        <span style="color:#047857;">მთელი დღის განმავლობაში</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    free_html = (
+                        f'<div class="room-box room-free">'
+                        f'<div style="background-color: #10B981; color: #FFFFFF; padding: 4px 8px; border-radius: 6px; font-weight: 800; display: inline-block; margin-bottom: 8px; font-size: 1.05rem;">✅ თავისუფალია</div>'
+                        f'<div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.9;">მთელი დღის განმავლობაში</div>'
+                        f'</div>'
+                    )
+                    st.markdown(free_html, unsafe_allow_html=True)
 
-    # 2. სრული მონაცემთა ცხრილი
+    # 2. სრული განრიგი კვადრატებად (Grid Cards)
     with tab2:
         if not st.session_state.schedule:
-            st.info("ცხრილში ჯერ მონაცემები არ არის. დაამატეთ ახალი ჯგუფი მარცხენა პანელიდან.")
+            st.info("განრიგში ჯერ მონაცემები არ არის. დაამატეთ ახალი ჯგუფი მარცხენა პანელიდან.")
         else:
             # ფილტრები
-            f_col1, f_col2 = st.columns([1, 2])
+            f_col1, f_col2 = st.columns()
             with f_col1:
-                filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
-            with f_col2:
-                filter_search = st.text_input("ძიება (უნივერსიტეტი, საგანი, ლექტორი):", "")
-
-            filtered_data = []
-            for idx, item in enumerate(st.session_state.schedule):
-                if item['auditorium'] in filter_aud:
-                    text_blob = f"{item['university']} {item['subject']} {item['lecturer']}".lower()
-                    if not filter_search or filter_search.lower() in text_blob:
-                        filtered_data.append({**item, "_idx": idx})
-
-            if filtered_data:
-                # დიდი და მსხვილი ცხრილის გენერაცია
-                table_html = """
-                <table class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>№</th>
-                            <th>უნივერსიტეტი</th>
-                            <th>საგანი</th>
-                            <th>ლექტორი</th>
-                            <th>აუდიტორია</th>
-                            <th>დაწყების თარიღი</th>
-                            <th>დასრულების თარიღი</th>
-                            <th>საათები</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                """
-                for i, row in enumerate(filtered_data, 1):
-                    table_html += f"""
-                        <tr>
-                            <td><b>{i}</b></td>
-                            <td><b>{row['university']}</b></td>
-                            <td style="color:#1E3A8A; font-weight:700;">{row['subject']}</td>
-                            <td><b>{row['lecturer']}</b></td>
-                            <td><span style="background-color:#E0E7FF; color:#1E3A8A; padding:4px 10px; border-radius:6px; font-weight:700;">{row['auditorium']}</span></td>
-                            <td>{row['start_date']}</td>
-                            <td>{row['end_date']}</td>
-                            <td><b style="color:#047857; font-size:1.15rem;">{row['start_time']} – {row['end_time']}</b></td>
-                        </tr>
-                    """
-                table_html += "</tbody></table>"
-                st.markdown(table_html, unsafe_allow_html=True)
-                
-                # ჩანაწერის წაშლის მენიუ
-                st.markdown("---")
-                with st.expander("🗑️ ჩანაწერის წაშლა"):
-                    del_options = {
-                        f"#{i+1} {d['subject']} ({d['auditorium']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": d['_idx'] 
-                        for i, d in enumerate(filtered_data)
-                    }
-                    to_delete = st.selectbox("აირჩიეთ წასაშლელი ლექცია:", list(del_options.keys()))
-                    if st.button("ჩანაწერის წაშლა"):
-                        idx_to_del = del_options[to_delete]
-                        st.session_state.schedule.pop(idx_to_del)
-                        save_data(st.session_state.schedule)
-                        st.success("ჩანაწერი წაშლილია!")
-                        st.rerun()
-            else:
-                st.warning("მითითებული პარამეტრებით ჩანაწერი არ მოიძებნა.")
-
-            # CSV ექსპორტი
-            df_export = pd.DataFrame(st.session_state.schedule)
-            csv_bytes = df_export.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📥 ცხრილის გადმოწერა (CSV ფორმატში)",
-                data=csv_bytes,
-                file_name="lecture_schedule.csv",
-                mime="text/csv"
-            )
