@@ -21,14 +21,14 @@ MONTHS_GE = {
     9: "სექტემბერი", 10: "ოქტომბერი", 11: "ნოემბერი", 12: "დეკემბერი"
 }
 
-# CSS სტილები - Dark / Light რეჟიმებთან სრული თავსებადობით
+# CSS სტილები - მობილურზე მორგება (Responsive) და Dark/Light თავსებადობა
 st.markdown("""
 <style>
     html, body, [class*="css"] {
         font-size: 16px;
     }
 
-    /* ზედა მენიუს ღილაკების სტილი */
+    /* ზედა მენიუს ღილაკები */
     div[role="radiogroup"] {
         background-color: var(--secondary-background-color);
         padding: 6px;
@@ -37,36 +37,41 @@ st.markdown("""
         margin-bottom: 20px;
         display: flex;
         justify-content: center;
-        gap: 15px;
+        flex-wrap: wrap;
+        gap: 10px;
     }
     div[role="radiogroup"] label {
         padding: 8px 18px !important;
-        font-size: 1.15rem !important;
+        font-size: 1.1rem !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
     }
 
-    /* კვირის სრული ბადის ცხრილი */
+    /* კვირის სრული ბადის კონტეინერი და ცხრილი */
+    .table-scroll-wrapper {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-top: 15px;
+        border-radius: 10px;
+        border: 1.5px solid rgba(128, 128, 128, 0.3);
+    }
     .full-grid-table {
         width: 100%;
         border-collapse: collapse;
-        min-width: 1100px;
-        border-radius: 10px;
-        overflow: hidden;
-        border: 2px solid rgba(128, 128, 128, 0.35);
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        min-width: 950px;
     }
     .full-grid-table th {
         background-color: #1E3A8A;
         color: #FFFFFF;
-        padding: 14px 8px;
+        padding: 12px 6px;
         border: 1px solid rgba(128, 128, 128, 0.3);
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         text-align: center;
     }
     .full-grid-table td {
         border: 1px solid rgba(128, 128, 128, 0.25);
-        padding: 8px;
+        padding: 6px;
         vertical-align: top;
     }
 
@@ -77,7 +82,7 @@ st.markdown("""
         border-radius: 8px;
         padding: 8px 10px;
         margin-bottom: 8px;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
         text-align: left;
     }
     .slot-time {
@@ -139,8 +144,83 @@ st.markdown("""
         background-color: #1D4ED8 !important;
         color: #FFFFFF !important;
     }
+
+    /* --- მობილური ეკრანების ადაპტაცია (Responsive) --- */
+    @media (max-width: 768px) {
+        .block-container {
+            padding: 1rem 0.5rem !important;
+        }
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.25rem !important;
+        }
+        div[role="radiogroup"] {
+            flex-direction: column !important;
+            align-items: stretch !important;
+        }
+        div[role="radiogroup"] label {
+            width: 100% !important;
+            text-align: center !important;
+            font-size: 1.0rem !important;
+            padding: 10px !important;
+        }
+        .full-grid-table {
+            min-width: 850px !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ==============================================================================
+# ავტორიზაციის შემოწმება (Login Gate)
+# ==============================================================================
+def check_auth():
+    if st.session_state.get("authenticated", False):
+        return True
+
+    c_left, c_mid, c_right = st.columns((1, 2, 1))
+    with c_mid:
+        st.markdown("<div style='text-align: center; margin-top: 40px;'><h1>🔐 სისტემაში შესვლა</h1></div>", unsafe_allow_html=True)
+        st.info("სასწავლო განრიგის სისტემა დაცულია. გთხოვთ გაიაროთ ავტორიზაცია.")
+        
+        with st.form("auth_form"):
+            username = st.text_input("მომხმარებელი", placeholder="შეიყვანეთ მომხმარებელი")
+            password = st.text_input("პაროლი", type="password", placeholder="შეიყვანეთ პაროლი")
+            login_btn = st.form_submit_button("შესვლა", use_container_width=True)
+
+        if login_btn:
+            # პაროლის გადამოწმება
+            valid_user = st.secrets.get("AUTH_USER", "admin") if hasattr(st, "secrets") and "AUTH_USER" in st.secrets else "admin"
+            valid_pass = st.secrets.get("AUTH_PASSWORD", "admin2026") if hasattr(st, "secrets") and "AUTH_PASSWORD" in st.secrets else "admin2026"
+
+            if username.strip() == str(valid_user).strip() and password.strip() == str(valid_pass).strip():
+                st.session_state.authenticated = True
+                st.session_state.current_user = username.strip()
+                st.success("ავტორიზაცია წარმატებულია!")
+                st.rerun()
+            else:
+                st.error("მომხმარებლის სახელი ან პაროლი არასწორია!")
+
+    return False
+
+# არაავტორიზებული მომხმარებლისთვის საიტი აქ ჩერდება
+if not check_auth():
+    st.stop()
+
+# ==============================================================================
+# ავტორიზებული მომხმარებლის ინტერფეისი
+# ==============================================================================
+
+# ზედა სტატუსი და გამოსვლის ღილაკი
+top_info, top_logout = st.columns((8, 2))
+with top_info:
+    st.caption(f"👤 ავტორიზებული მომხმარებელი: **{st.session_state.get('current_user', 'admin')}**")
+with top_logout:
+    if st.button("🚪 გამოსვლა", key="logout_btn", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
 
 # მონაცემების ჩატვირთვა
 def load_data():
@@ -175,14 +255,13 @@ base_monday = today - datetime.timedelta(days=today.weekday())
 if 'current_monday' not in st.session_state:
     st.session_state.current_monday = base_monday
 
-# ამოწმებს, აქტიურია თუ არა ლექცია კონკრეტულ თარიღზე (შაბათ-კვირის გათვალისწინებით)
+# ამოწმებს, აქტიურია თუ არა ლექცია კონკრეტულ თარიღზე
 def is_event_active_on_date(item, date_obj):
     sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
     edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
     if not (sdate <= date_obj <= edate):
         return False
     
-    # 5 = შაბათი, 6 = კვირა
     is_sat = bool(item.get('include_saturday', False))
     is_sun = bool(item.get('include_sunday', False))
     
@@ -209,18 +288,15 @@ def check_conflicts(new_entry):
         item_stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M").time()
         item_etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M").time()
 
-        # საათების გადაკვეთა
         time_overlap = not (new_etime <= item_stime or new_stime >= item_etime)
         if not time_overlap:
             continue
 
-        # თარიღების ინტერვალის გადაკვეთა
         overlap_start = max(new_sdate, item_sdate)
         overlap_end = min(new_edate, item_edate)
         if overlap_start > overlap_end:
             continue
 
-        # შევამოწმოთ, არის თუ არა თუნდაც 1 საერთო აქტიური დღე
         has_common_active_day = False
         cur_d = overlap_start
         while cur_d <= overlap_end:
@@ -253,7 +329,7 @@ selected_page = st.radio(
 )
 
 # ==============================================================================
-# გვერდი 1: კვირის სრული ბადე (100% ეკრანი)
+# გვერდი 1: კვირის სრული ბადე (100% ეკრანი, სენსორული სქროლით)
 # ==============================================================================
 if selected_page == "📅 კვირის სრული ბადე (სრული ეკრანი)":
     cur_mon = st.session_state.current_monday
@@ -289,12 +365,13 @@ if selected_page == "📅 კვირის სრული ბადე (ს�
             st.session_state.current_monday = new_mon
             st.rerun()
 
-    # სრულეკრანიანი ცხრილი
+    st.caption("💡 მობილურზე/ტაბლეტზე: შეგიძლიათ ცხრილის თითით მარჯვნივ-მარცხნივ გადაფურცვლა.")
+
     grid_html = [
-        '<div style="overflow-x: auto; margin-top: 15px;">',
+        '<div class="table-scroll-wrapper">',
         '<table class="full-grid-table">',
         '<thead><tr>',
-        '<th style="width: 14%; min-width: 160px;">აუდიტორია</th>'
+        '<th style="width: 14%; min-width: 150px;">აუდიტორია</th>'
     ]
 
     for d, name in zip(week_dates, DAY_NAMES_KA):
@@ -373,7 +450,6 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
             with c_t2:
                 end_time = st.time_input("დასრულების საათი*", value=datetime.time(12, 0))
 
-            # შაბათისა და კვირის ცალ-ცალკე მონიშვნა
             st.markdown("<b>📅 უქმე დღეების ჩართვა (არასავალდებულო):</b>", unsafe_allow_html=True)
             c_sat, c_sun = st.columns(2)
             with c_sat:
