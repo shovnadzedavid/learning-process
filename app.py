@@ -277,7 +277,7 @@ def load_data():
                 if parsed_days is not None:
                     r['days_of_week'] = parsed_days
                 else:
-                    days =
+                    days = list(range(5))
                     if r.get('include_saturday'):
                         days.append(5)
                     if r.get('include_sunday'):
@@ -750,55 +750,52 @@ elif selected_page == "📊 საათების რეპორტი & მ
         room_cols = st.columns(5)
         for i, room in enumerate(AUDITORIUMS):
             with room_cols[i]:
-                occupied_sessions = []
-                for item in st.session_state.schedule:
-                    item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
-                    if item_aud == room and is_event_active_on_date(item, selected_monitor_date):
-                        occupied_sessions.append(item)
-
-                occupied_sessions.sort(key=lambda x: str(x['start_time']))
-
-                if occupied_sessions:
-                    st.markdown(
-                        f'<div class="room-box room-busy">'
-                        f'<h3 style="color: #EF4444; margin-bottom: 6px;">🔴 {room}</h3>'
-                        f'<div style="color: #EF4444; font-weight: 700; margin-bottom: 10px;">დაკავებულია ({len(occupied_sessions)} ლექცია)</div>',
-                        unsafe_allow_html=True
-                    )
-                    for occ in occupied_sessions:
-                        st.markdown(
-                            f'<div style="background: rgba(0,0,0,0.06); padding: 8px; border-radius: 6px; margin-bottom: 6px;">'
-                            f'<div><b>⏰ {occ["start_time"]} - {occ["end_time"]}</b></div>'
-                            f'<div>📖 {occ["subject"]}</div>'
-                            f'<div style="font-size: 0.9rem; opacity: 0.85;">👨‍🏫 {occ["lecturer"]}</div>'
-                            f'</div>',
-                            unsafe_allow_html=True
+                st.markdown(f"### {room}")
+                room_events = [
+                    item for item in st.session_state.schedule 
+                    if (item['auditorium'] == room or (item['auditorium'] == 'აუდიტორია 5' and room == 'საკონფერენციო დარბაზი'))
+                    and is_event_active_on_date(item, selected_monitor_date)
+                ]
+                room_events.sort(key=lambda x: str(x['start_time']))
+                
+                if room_events:
+                    for ev in room_events:
+                        card_html = (
+                            f'<div class="room-box room-busy">'
+                            f'<div style="background-color: #EF4444; color: #FFFFFF; padding: 4px 8px; border-radius: 6px; font-weight: 800; display: inline-block; margin-bottom: 8px; font-size: 1.05rem;">⛔ {ev["start_time"]} - {ev["end_time"]}</div>'
+                            f'<div style="font-size: 1.1rem; font-weight: 800; color: var(--text-color); margin-bottom: 4px;">{ev["subject"]}</div>'
+                            f'<div style="font-size: 1.0rem; color: var(--text-color); margin-bottom: 4px;"><b>ლექტორი:</b> {ev["lecturer"]}</div>'
+                            f'<div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.85;"><b>უნივერსიტეტი:</b> {ev["university"]}</div>'
+                            f'</div>'
                         )
-                    st.markdown('</div>', unsafe_allow_html=True)
+                        st.markdown(card_html, unsafe_allow_html=True)
                 else:
-                    st.markdown(
+                    free_html = (
                         f'<div class="room-box room-free">'
-                        f'<h3 style="color: #10B981; margin-bottom: 6px;">🟢 {room}</h3>'
-                        f'<div style="color: #10B981; font-weight: 700;">თავისუფალია მთელი დღე</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
+                        f'<div style="background-color: #10B981; color: #FFFFFF; padding: 4px 8px; border-radius: 6px; font-weight: 800; display: inline-block; margin-bottom: 8px; font-size: 1.05rem;">✅ თავისუფალია</div>'
+                        f'<div style="font-size: 0.95rem; color: var(--text-color); opacity: 0.9;">მთელი დღის განმავლობაში</div>'
+                        f'</div>'
                     )
+                    st.markdown(free_html, unsafe_allow_html=True)
 
     # 3. ყველა ჯგუფის ბარათები
     with tab_cards:
-        st.subheader("📋 ყველა რეგისტრირებული ჯგუფის ბარათი")
-        
         if not st.session_state.schedule:
-            st.info("ჯგუფები არ არის რეგისტრირებული.")
+            st.info("განრიგში ჯერ მონაცემები არ არის.")
         else:
-            filter_aud = st.selectbox("ფილტრი აუდიტორიით:", ["ყველა"] + AUDITORIUMS, key="filter_aud_cards")
-            
-            filtered_data = st.session_state.schedule
-            if filter_aud != "ყველა":
-                filtered_data = [
-                    d for d in filtered_data 
-                    if ("საკონფერენციო დარბაზი" if d['auditorium'] == "აუდიტორია 5" else d['auditorium']) == filter_aud
-                ]
+            f_col1, f_col2 = st.columns(2)
+            with f_col1:
+                filter_aud = st.multiselect("ფილტრი აუდიტორიით:", AUDITORIUMS, default=AUDITORIUMS)
+            with f_col2:
+                filter_search = st.text_input("ძიება:", "")
+
+            filtered_data = []
+            for idx, item in enumerate(st.session_state.schedule):
+                item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                if item_aud in filter_aud:
+                    text_blob = f"{item['university']} {item['subject']} {item['lecturer']}".lower()
+                    if not filter_search or filter_search.lower() in text_blob:
+                        filtered_data.append(item)
 
             if filtered_data:
                 grid_cols = st.columns(2)
@@ -814,11 +811,6 @@ elif selected_page == "📊 საათების რეპორტი & მ
                         sat_label = " • შაბათი" if row.get('include_saturday') else ""
                         sun_label = " • კვირა" if row.get('include_sunday') else ""
                         days_note = f"ორშ-პარ{sat_label}{sun_label}"
-                    
-                    if row.get('active_dates'):
-                        a_dates = parse_active_dates(row['active_dates'])
-                        if a_dates:
-                            days_note += f" (სულ {len(a_dates)} ლექცია)"
                     
                     with target_col:
                         card_html = (
