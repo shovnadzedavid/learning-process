@@ -2,10 +2,8 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
-import json
-import urllib.request
 
-# გვერდის კონფიგურაცია
+# გვერდის კონფიგურაცია - Wide რეჟიმი
 st.set_page_config(
     page_title="სასწავლო განრიგის მართვის სისტემა",
     page_icon="🎓",
@@ -13,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# მუდმივები
+# მონაცემთა ფაილი და აუდიტორიების სია
 DATA_FILE = "schedule_data.csv"
 AUDITORIUMS = ["აუდიტორია 1", "აუდიტორია 2", "აუდიტორია 3", "აუდიტორია 4", "საკონფერენციო დარბაზი"]
 DAY_NAMES_KA = ["ორშაბათი", "სამშაბათი", "ოთხშაბათი", "ხუთშაბათი", "პარასკევი", "შაბათი", "კვირა"]
@@ -23,87 +21,249 @@ MONTHS_GE = {
     9: "სექტემბერი", 10: "ოქტომბერი", 11: "ნოემბერი", 12: "დეკემბერი"
 }
 
-# CSS სტილები
+# CSS სტილები - მობილურზე მორგება (Responsive) და Dark/Light თავსებადობა
 st.markdown("""
 <style>
-    html, body, [class*="css"] { font-size: 16px; }
+    /* საერთო ფონტის ზომა */
+    html, body, [class*="css"] {
+        font-size: 16px;
+    }
+
+    /* ზედა მენიუს ღილაკები */
     div[role="radiogroup"] {
         background-color: var(--secondary-background-color);
-        padding: 6px; border-radius: 12px; border: 1px solid rgba(128,128,128,0.25);
-        margin-bottom: 20px; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px;
+        padding: 6px;
+        border-radius: 12px;
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        margin-bottom: 20px;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
     }
     div[role="radiogroup"] label {
-        padding: 8px 18px !important; font-size: 1.05rem !important; font-weight: 700 !important; border-radius: 8px !important;
+        padding: 8px 18px !important;
+        font-size: 1.1rem !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
     }
+
+    /* კვირის სრული ბადის კონტეინერი და ცხრილი */
     .table-scroll-wrapper {
-        width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch;
-        margin-top: 15px; border-radius: 10px; border: 1.5px solid rgba(128,128,128,0.3);
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-top: 15px;
+        border-radius: 10px;
+        border: 1.5px solid rgba(128, 128, 128, 0.3);
     }
-    .full-grid-table { width: 100%; border-collapse: collapse; min-width: 950px; }
+    .full-grid-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 950px;
+    }
     .full-grid-table th {
-        background-color: #1E3A8A; color: #FFFFFF; padding: 12px 6px;
-        border: 1px solid rgba(128,128,128,0.3); font-size: 1.05rem; text-align: center;
+        background-color: #1E3A8A;
+        color: #FFFFFF;
+        padding: 12px 6px;
+        border: 1px solid rgba(128, 128, 128, 0.3);
+        font-size: 1.05rem;
+        text-align: center;
     }
-    .full-grid-table td { border: 1px solid rgba(128,128,128,0.25); padding: 6px; vertical-align: top; }
+    .full-grid-table td {
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        padding: 6px;
+        vertical-align: top;
+    }
+
+    /* ბარათები ცხრილის უჯრებში */
     .slot-card {
-        background-color: var(--secondary-background-color); border: 1.5px solid #EF4444;
-        border-radius: 8px; padding: 8px 10px; margin-bottom: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08); text-align: left;
+        background-color: var(--secondary-background-color);
+        border: 1.5px solid #EF4444;
+        border-radius: 8px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+        text-align: left;
     }
     .slot-time {
-        background-color: #EF4444; color: #FFFFFF; font-weight: 800; font-size: 0.95rem;
-        padding: 2px 8px; border-radius: 4px; display: inline-block; margin-bottom: 4px;
+        background-color: #EF4444;
+        color: #FFFFFF;
+        font-weight: 800;
+        font-size: 0.95rem;
+        padding: 2px 8px;
+        border-radius: 4px;
+        display: inline-block;
+        margin-bottom: 5px;
     }
-    .slot-subject { font-weight: 800; font-size: 1.05rem; color: var(--text-color); line-height: 1.25; margin-bottom: 3px; }
-    .slot-lecturer { font-size: 0.95rem; color: var(--text-color); opacity: 0.9; }
-    .slot-univ { font-size: 0.85rem; color: var(--text-color); opacity: 0.75; }
+    .slot-subject {
+        font-weight: 800;
+        font-size: 1.05rem;
+        color: var(--text-color);
+        line-height: 1.25;
+        margin-bottom: 3px;
+    }
+    .slot-lecturer {
+        font-size: 0.95rem;
+        color: var(--text-color);
+        opacity: 0.9;
+    }
+    .slot-univ {
+        font-size: 0.85rem;
+        color: var(--text-color);
+        opacity: 0.75;
+    }
+
+    /* აუდიტორიის მონიტორინგის ბარათები */
+    .room-box {
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+    }
+    .room-busy {
+        background-color: rgba(239, 68, 68, 0.14) !important;
+        border: 2px solid #EF4444 !important;
+    }
+    .room-free {
+        background-color: rgba(16, 185, 129, 0.14) !important;
+        border: 2px solid #10B981 !important;
+    }
+
+    /* შენახვის ღილაკი */
     .stButton>button {
-        width: 100%; font-size: 1.1rem !important; font-weight: 700 !important;
-        padding: 0.6rem 1rem !important; border-radius: 8px !important;
-        background-color: #2563EB !important; color: #FFFFFF !important; border: none !important;
+        width: 100%;
+        font-size: 1.15rem !important;
+        font-weight: 700 !important;
+        padding: 0.65rem 1rem !important;
+        border-radius: 8px !important;
+        background-color: #2563EB !important;
+        color: #FFFFFF !important;
+        border: none !important;
     }
+    .stButton>button:hover {
+        background-color: #1D4ED8 !important;
+        color: #FFFFFF !important;
+    }
+
+    /* --- მობილური ეკრანების ადაპტაცია (Responsive CSS) --- */
     @media (max-width: 768px) {
-        .block-container { padding: 1rem 0.5rem !important; }
-        div[role="radiogroup"] { flex-direction: column !important; }
+        .block-container {
+            padding: 1rem 0.5rem !important;
+        }
+        h1 {
+            font-size: 1.5rem !important;
+        }
+        h2 {
+            font-size: 1.25rem !important;
+        }
+        div[role="radiogroup"] {
+            flex-direction: column !important;
+            align-items: stretch !important;
+        }
+        div[role="radiogroup"] label {
+            width: 100% !important;
+            text-align: center !important;
+            font-size: 1.0rem !important;
+            padding: 10px !important;
+        }
+        .full-grid-table {
+            min-width: 850px !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ავტორიზაციის შემოწმება
+# ==============================================================================
+# 2. დაცულობა და ავტორიზაცია (Authentication Gate)
+# ==============================================================================
 def check_auth():
     if st.session_state.get("authenticated", False):
         return True
+
+    # ავტორიზაციის ფანჯარა (ცენტრირებული)
     c_left, c_mid, c_right = st.columns((1, 2, 1))
     with c_mid:
         st.markdown("<div style='text-align: center; margin-top: 40px;'><h1>🔐 სისტემაში შესვლა</h1></div>", unsafe_allow_html=True)
+        st.info("სასწავლო განრიგის სისტემა დაცულია. გთხოვთ შეიყვანოთ ავტორიზაციის მონაცემები.")
+        
         with st.form("auth_form"):
-            username = st.text_input("მომხმარებელი", placeholder="admin")
-            password = st.text_input("პაროლი", type="password", placeholder="••••••••")
+            username = st.text_input("მომხმარებელი", placeholder="შეიყვანეთ მომხმარებელი")
+            password = st.text_input("პაროლი", type="password", placeholder="შეიყვანეთ პაროლი")
             login_btn = st.form_submit_button("შესვლა", use_container_width=True)
+
         if login_btn:
+            # პაროლის წაკითხვა Streamlit Secrets-იდან ან ნაგულისხმევი მონაცემები
             valid_user = st.secrets.get("AUTH_USER", "admin") if hasattr(st, "secrets") and "AUTH_USER" in st.secrets else "admin"
             valid_pass = st.secrets.get("AUTH_PASSWORD", "admin2026") if hasattr(st, "secrets") and "AUTH_PASSWORD" in st.secrets else "admin2026"
+
             if username.strip() == str(valid_user).strip() and password.strip() == str(valid_pass).strip():
                 st.session_state.authenticated = True
                 st.session_state.current_user = username.strip()
+                st.success("ავტორიზაცია წარმატებულია!")
                 st.rerun()
             else:
                 st.error("მომხმარებლის სახელი ან პაროლი არასწორია!")
+
     return False
 
+# თუ მომხმარებელი არ არის ავტორიზებული, აპლიკაციის მუშაობა აქ ჩერდება
 if not check_auth():
     st.stop()
 
-# ჰედერი და გამოსვლა
+# ==============================================================================
+# ავტორიზებული მომხმარებლისთვის: მონაცემთა მართვა
+# ==============================================================================
+
+# ზედა ჰედერი და გამოსვლის (Logout) ღილაკი
 top_info, top_logout = st.columns((8, 2))
 with top_info:
-    st.caption(f"👤 ავტორიზებული: **{st.session_state.get('current_user', 'admin')}**")
+    st.caption(f"👤 ავტორიზებული მომხმარებელი: **{st.session_state.get('current_user', 'admin')}**")
 with top_logout:
     if st.button("🚪 გამოსვლა", key="logout_btn", use_container_width=True):
         st.session_state.authenticated = False
         st.rerun()
 
-# მონაცემების შენახვა/ჩატვირთვა
+def parse_days(val):
+    if val is None or pd.isna(val):
+        return None
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        val = val.strip()
+        if val.startswith('['):
+            import ast
+            try:
+                return [int(x) for x in ast.literal_eval(val)]
+            except Exception:
+                pass
+        try:
+            return [int(x.strip()) for x in val.split(',') if x.strip().isdigit()]
+        except Exception:
+            pass
+    return None
+
+def parse_active_dates(val):
+    if val is None or pd.isna(val):
+        return None
+    if isinstance(val, list):
+        return [str(x).strip() for x in val]
+    if isinstance(val, str):
+        val = val.strip()
+        if val.startswith('['):
+            import ast
+            try:
+                parsed = ast.literal_eval(val)
+                return [str(x).strip() for x in parsed]
+            except Exception:
+                pass
+        try:
+            return [x.strip() for x in val.split(',') if x.strip()]
+        except Exception:
+            pass
+    return None
+
+# მონაცემების ჩატვირთვა
 def load_data():
     if os.path.exists(DATA_FILE):
         try:
@@ -112,13 +272,33 @@ def load_data():
             for r in records:
                 if r.get('auditorium') == 'აუდიტორია 5':
                     r['auditorium'] = 'საკონფერენციო დარბაზი'
-                r['include_saturday'] = bool(r.get('include_saturday', False))
-                r['include_sunday'] = bool(r.get('include_sunday', False))
+                
+                parsed_days = parse_days(r.get('days_of_week'))
+                if parsed_days is not None:
+                    r['days_of_week'] = parsed_days
+                else:
+                    days =
+                    if r.get('include_saturday'):
+                        days.append(5)
+                    if r.get('include_sunday'):
+                        days.append(6)
+                    r['days_of_week'] = days
+                
+                r['include_saturday'] = 5 in r['days_of_week']
+                r['include_sunday'] = 6 in r['days_of_week']
+                
+                day_map = {0: 'ორშ', 1: 'სამ', 2: 'ოთხ', 3: 'ხუთ', 4: 'პარ', 5: 'შაბ', 6: 'კვი'}
+                if 'days_display' not in r or pd.isna(r.get('days_display')):
+                    r['days_display'] = ', '.join([day_map[d] for d in r['days_of_week']])
+                parsed_dates = parse_active_dates(r.get('active_dates'))
+                if parsed_dates:
+                    r['active_dates'] = parsed_dates
             return records
         except Exception:
             return []
     return []
 
+# მონაცემების შენახვა
 def save_data(data_list):
     df = pd.DataFrame(data_list)
     df.to_csv(DATA_FILE, index=False)
@@ -126,128 +306,133 @@ def save_data(data_list):
 if 'schedule' not in st.session_state:
     st.session_state.schedule = load_data()
 
+# კვირის მართვა
 today = datetime.date.today()
 base_monday = today - datetime.timedelta(days=today.weekday())
 
 if 'current_monday' not in st.session_state:
     st.session_state.current_monday = base_monday
 
+# ამოწმებს, აქტიურია თუ არა ლექცია კონკრეტულ თარიღზე
 def is_event_active_on_date(item, date_obj):
+    d_str = date_obj.strftime("%Y-%m-%d") if hasattr(date_obj, 'strftime') else str(date_obj)
+    
+    # თუ ჯგუფს აქვს კონკრეტული მონიშნული თარიღების სია
+    active_dates = item.get('active_dates')
+    if active_dates is not None:
+        if isinstance(active_dates, str):
+            active_dates = parse_active_dates(active_dates)
+        if isinstance(active_dates, list) and len(active_dates) > 0:
+            return d_str in active_dates
+
+    # სხვა შემთხვევაში ამოწმებს თარიღების დიაპაზონს
     sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
     edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
     if not (sdate <= date_obj <= edate):
         return False
-    if date_obj.weekday() == 5 and not item.get('include_saturday', False):
+    
+    w = date_obj.weekday()
+    days_of_week = item.get('days_of_week')
+    if days_of_week is not None:
+        if isinstance(days_of_week, str):
+            days_of_week = parse_days(days_of_week)
+        if isinstance(days_of_week, list):
+            return w in days_of_week
+            
+    is_sat = bool(item.get('include_saturday', False))
+    is_sun = bool(item.get('include_sunday', False))
+    
+    if w == 5 and not is_sat:
         return False
-    if date_obj.weekday() == 6 and not item.get('include_sunday', False):
+    if w == 6 and not is_sun:
         return False
+        
     return True
 
+# კონფლიქტების შემოწმება
 def check_conflicts(new_entry):
-    new_sdate = datetime.datetime.strptime(str(new_entry['start_date']), "%Y-%m-%d").date()
-    new_edate = datetime.datetime.strptime(str(new_entry['end_date']), "%Y-%m-%d").date()
-    new_stime = datetime.datetime.strptime(str(new_entry['start_time']), "%H:%M").time()
-    new_etime = datetime.datetime.strptime(str(new_entry['end_time']), "%H:%M").time()
+    new_sdate = datetime.datetime.strptime(new_entry['start_date'], "%Y-%m-%d").date()
+    new_edate = datetime.datetime.strptime(new_entry['end_date'], "%Y-%m-%d").date()
+    new_stime = datetime.datetime.strptime(new_entry['start_time'], "%H:%M").time()
+    new_etime = datetime.datetime.strptime(new_entry['end_time'], "%H:%M").time()
     
-    aud_conflicts, lec_conflicts = [], []
-    for item in st.session_state.schedule:
-        item_stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M").time()
-        item_etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M").time()
-        if not (new_etime > item_stime and new_stime < item_etime):
-            continue
+    aud_conflicts = []
+    lec_conflicts = []
 
+    for item in st.session_state.schedule:
         item_sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
         item_edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
+        item_stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M").time()
+        item_etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M").time()
+
+        time_overlap = not (new_etime <= item_stime or new_stime >= item_etime)
+        if not time_overlap:
+            continue
+
         overlap_start = max(new_sdate, item_sdate)
         overlap_end = min(new_edate, item_edate)
         if overlap_start > overlap_end:
             continue
 
-        has_common = False
+        has_common_active_day = False
         cur_d = overlap_start
         while cur_d <= overlap_end:
             if is_event_active_on_date(new_entry, cur_d) and is_event_active_on_date(item, cur_d):
-                has_common = True
+                has_common_active_day = True
                 break
             cur_d += datetime.timedelta(days=1)
 
-        if has_common:
+        if has_common_active_day:
             item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
             new_aud = "საკონფერენციო დარბაზი" if new_entry['auditorium'] == "აუდიტორია 5" else new_entry['auditorium']
+            
             if item_aud == new_aud:
                 aud_conflicts.append(item)
             if str(item['lecturer']).strip().lower() == str(new_entry['lecturer']).strip().lower():
                 lec_conflicts.append(item)
+
     return aud_conflicts, lec_conflicts
 
-def call_gemini_parser(api_key, raw_text):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    prompt = f"""
-მომხმარებელმა მოგაწოდა არეული ტექსტი ლექციების შესახებ.
-ამოიღე ყველა ლექცია და დააბრუნე მკაცრად JSON მასივი:
-[
-  {{
-    "university": "უნივერსიტეტი",
-    "subject": "საგანი",
-    "lecturer": "ლექტორი",
-    "auditorium": "ერთ-ერთი: 'აუდიტორია 1', 'აუდიტორია 2', 'აუდიტორია 3', 'აუდიტორია 4', 'საკონფერენციო დარბაზი'",
-    "start_date": "YYYY-MM-DD",
-    "end_date": "YYYY-MM-DD",
-    "start_time": "HH:MM",
-    "end_time": "HH:MM",
-    "include_saturday": false,
-    "include_sunday": false
-  }}
-]
-წელი: {datetime.date.today().year}. დააბრუნე მხოლოდ სუფთა JSON, ```json მარკდაუნის გარეშე.
-ტექსტი:
-{raw_text}
-"""
-    headers = {"Content-Type": "application/json"}
-    payload = {"contents": [{"parts": [{"text": prompt}]}], "generationConfig": {"temperature": 0.1}}
-    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=35) as resp:
-        res_data = json.loads(resp.read().decode('utf-8'))
-        text = res_data['candidates'][0]['content']['parts'][0]['text'].strip()
-        for prefix in ["```json", "```"]:
-            if text.startswith(prefix): text = text[len(prefix):]
-        if text.endswith("```"): text = text[:-3]
-        return json.loads(text.strip())
-
-# ზედა ნავიგაცია
+# ზედა მთავარი ნავიგაცია
 selected_page = st.radio(
     "გვერდის არჩევა",
     (
         "📅 კვირის სრული ბადე (სრული ეკრანი)", 
-        "➕ ახალი ჯგუფის დამატება & მართვა",
-        "🤖 AI ჭკვიანი იმპორტი (ტექსტიდან)",
-        "📊 საათების რეპორტი & სია"
+        "➕ ახალი ჯგუფის დამატება & მართვა", 
+        "📊 საათების რეპორტი & მონიტორინგი"
     ),
     horizontal=True,
     label_visibility="collapsed"
 )
 
-# 1. კვირის სრული ბადე
+# ==============================================================================
+# გვერდი 1: კვირის სრული ბადე (100% ეკრანი, მობილურზეც ჰორიზონტალური სქროლით)
+# ==============================================================================
 if selected_page == "📅 კვირის სრული ბადე (სრული ეკრანი)":
     cur_mon = st.session_state.current_monday
     cur_sun = cur_mon + datetime.timedelta(days=6)
     week_dates = [cur_mon + datetime.timedelta(days=i) for i in range(7)]
 
-    m1, m2 = MONTHS_GE[cur_mon.month], MONTHS_GE[cur_sun.month]
-    week_label = f"{cur_mon.day} – {cur_sun.day} {m1}, {cur_mon.year}" if cur_mon.month == cur_sun.month else f"{cur_mon.day} {m1} – {cur_sun.day} {m2}, {cur_mon.year}"
+    m1 = MONTHS_GE[cur_mon.month]
+    m2 = MONTHS_GE[cur_sun.month]
+    if cur_mon.month == cur_sun.month:
+        week_label = f"{cur_mon.day} – {cur_sun.day} {m1}, {cur_mon.year}"
+    else:
+        week_label = f"{cur_mon.day} {m1} – {cur_sun.day} {m2}, {cur_mon.year}"
+
     st.markdown(f"## 📅 {week_label}")
 
     n_col1, n_col2, n_col3, n_col4 = st.columns((1, 1, 1, 2))
     with n_col1:
-        if st.button("⬅️ წინა კვირა", use_container_width=True):
+        if st.button("⬅️ წინა კვირა", key="btn_prev", use_container_width=True):
             st.session_state.current_monday -= datetime.timedelta(days=7)
             st.rerun()
     with n_col2:
-        if st.button("📍 მიმდინარე კვირა", use_container_width=True):
+        if st.button("📍 მიმდინარე კვირა", key="btn_cur", use_container_width=True):
             st.session_state.current_monday = base_monday
             st.rerun()
     with n_col3:
-        if st.button("შემდეგი კვირა ➡️", use_container_width=True):
+        if st.button("შემდეგი კვირა ➡️", key="btn_next", use_container_width=True):
             st.session_state.current_monday += datetime.timedelta(days=7)
             st.rerun()
     with n_col4:
@@ -257,77 +442,197 @@ if selected_page == "📅 კვირის სრული ბადე (ს�
             st.session_state.current_monday = new_mon
             st.rerun()
 
-    grid_html = ['<div class="table-scroll-wrapper"><table class="full-grid-table"><thead><tr><th style="width:14%; min-width:150px;">აუდიტორია</th>']
+    st.caption("💡 მობილურზე/ტაბლეტზე: შეგიძლიათ ცხრილის თითით მარჯვნივ-მარცხნივ გადაფურცვლა.")
+
+    # სრულეკრანიანი ცხრილი
+    grid_html = [
+        '<div class="table-scroll-wrapper">',
+        '<table class="full-grid-table">',
+        '<thead><tr>',
+        '<th style="width: 14%; min-width: 150px;">აუდიტორია</th>'
+    ]
+
     for d, name in zip(week_dates, DAY_NAMES_KA):
         d_short = f"{d.day} {MONTHS_GE[d.month][:3]}"
-        bg = "#2563EB" if d == today else "#1E3A8A"
-        grid_html.append(f'<th style="background-color:{bg};"><b>{name}</b><br><span style="font-size:0.95rem; opacity:0.9;">{d_short}</span></th>')
+        is_today = (d == today)
+        bg = "#2563EB" if is_today else "#1E3A8A"
+        grid_html.append(
+            f'<th style="background-color: {bg};">'
+            f'<b>{name}</b><br><span style="font-size: 0.95rem; opacity: 0.9;">{d_short}</span>'
+            f'</th>'
+        )
     grid_html.append('</tr></thead><tbody>')
 
     for aud in AUDITORIUMS:
-        grid_html.append(f'<tr><td style="background-color:var(--secondary-background-color); color:var(--text-color); font-weight:800; font-size:1.15rem; text-align:center; vertical-align:middle;">{aud}</td>')
+        grid_html.append(
+            f'<tr>'
+            f'<td style="background-color: var(--secondary-background-color); color: var(--text-color); font-weight: 800; font-size: 1.15rem; text-align: center; vertical-align: middle;">'
+            f'{aud}'
+            f'</td>'
+        )
+
         for d in week_dates:
-            matching = [item for item in st.session_state.schedule if (("საკონფერენციო დარბაზი" if item.get('auditorium')=="აუდიტორია 5" else item.get('auditorium')) == aud) and is_event_active_on_date(item, d)]
+            matching = []
+            for item in st.session_state.schedule:
+                item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                if item_aud == aud and is_event_active_on_date(item, d):
+                    matching.append(item)
+
             matching.sort(key=lambda x: str(x['start_time']))
+
             if matching:
-                grid_html.append('<td style="background-color:rgba(239,68,68,0.06); min-width:135px;">')
+                grid_html.append('<td style="background-color: rgba(239, 68, 68, 0.06); min-width: 135px;">')
                 for m in matching:
-                    grid_html.append(f'<div class="slot-card"><div class="slot-time">⏰ {m["start_time"]} - {m["end_time"]}</div><div class="slot-subject">{m["subject"]}</div><div class="slot-lecturer">👨‍🏫 {m["lecturer"]}</div><div class="slot-univ">🏛️ {m["university"]}</div></div>')
+                    grid_html.append(
+                        f'<div class="slot-card">'
+                        f'<div class="slot-time">⏰ {m["start_time"]} - {m["end_time"]}</div>'
+                        f'<div class="slot-subject">{m["subject"]}</div>'
+                        f'<div class="slot-lecturer">👨‍🏫 {m["lecturer"]}</div>'
+                        f'<div class="slot-univ">🏛️ {m["university"]}</div>'
+                        f'</div>'
+                    )
                 grid_html.append('</td>')
             else:
-                grid_html.append('<td style="text-align:center; vertical-align:middle; opacity:0.25; font-size:1.2rem; min-width:135px;">—</td>')
+                grid_html.append(
+                    '<td style="text-align: center; vertical-align: middle; color: var(--text-color); opacity: 0.25; font-size: 1.2rem; min-width: 135px;">—</td>'
+                )
         grid_html.append('</tr>')
+
     grid_html.append('</tbody></table></div>')
     st.markdown("".join(grid_html), unsafe_allow_html=True)
 
-# 2. ახალი ჯგუფის დამატება & მართვა
+# ==============================================================================
+# გვერდი 2: ახალი ჯგუფის დამატება & მართვა
+# ==============================================================================
 elif selected_page == "➕ ახალი ჯგუფის დამატება & მართვა":
-    st.subheader("➕ ახალი ჯგუფის დამატება და მართვა")
+    st.subheader("➕ ახალი ჯგუფის დამატება და კონფლიქტების შემოწმება")
+    
     col_add, col_list = st.columns((4, 6), gap="large")
     
     with col_add:
-        with st.form(key="lecture_form_page", clear_on_submit=False):
-            university = st.text_input("1. უნივერსიტეტი*", placeholder="მაგ. თსუ")
-            subject = st.text_input("2. საგანი*", placeholder="მაგ. საზოგადოებრივი ჯანდაცვა")
-            lecturer = st.text_input("3. ლექტორი*", placeholder="მაგ. გიორგი ბერიძე")
-            auditorium = st.selectbox("აუდიტორია*", AUDITORIUMS)
+        university = st.text_input("1. უნივერსიტეტი*", placeholder="მაგ. თბილისის სახელმწიფო უნივერსიტეტი", key="inp_univ")
+        subject = st.text_input("2. საგანი*", placeholder="მაგ. საზოგადოებრივი ჯანდაცვა", key="inp_subj")
+        lecturer = st.text_input("3. ლექტორი*", placeholder="მაგ. გიორგი ბერიძე", key="inp_lec")
+        auditorium = st.selectbox("აუდიტორია*", AUDITORIUMS, key="inp_aud")
+        
+        c_d1, c_d2 = st.columns(2)
+        with c_d1:
+            start_date = st.date_input("4. დაწყების თარიღი*", value=datetime.date.today(), key="inp_sdate")
+        with c_d2:
+            end_date = st.date_input("5. დასრულების თარიღი*", value=datetime.date.today(), key="inp_edate")
             
-            c_d1, c_d2 = st.columns(2)
-            with c_d1: start_date = st.date_input("4. დაწყების თარიღი*", value=today)
-            with c_d2: end_date = st.date_input("5. დასრულების თარიღი*", value=today)
-                
-            c_t1, c_t2 = st.columns(2)
-            with c_t1: start_time = st.time_input("6. დაწყების საათი*", value=datetime.time(10, 0))
-            with c_t2: end_time = st.time_input("დასრულების საათი*", value=datetime.time(12, 0))
+        c_t1, c_t2 = st.columns(2)
+        with c_t1:
+            start_time = st.time_input("6. დაწყების საათი*", value=datetime.time(10, 0), key="inp_stime")
+        with c_t2:
+            end_time = st.time_input("დასრულების საათი*", value=datetime.time(12, 0), key="inp_etime")
 
-            c_sat, c_sun = st.columns(2)
-            with c_sat: include_sat = st.checkbox("შაბათის ჩათვლით", value=False)
-            with c_sun: include_sun = st.checkbox("კვირის ჩათვლით", value=False)
+        st.markdown("<b>📅 ლექციის ჩატარების დღეები*:</b>", unsafe_allow_html=True)
+        c_d1, c_d2, c_d3, c_d4, c_d5, c_d6, c_d7 = st.columns(7)
+        with c_d1: chk_mon = st.checkbox("ორშ", value=True, key="c_mon")
+        with c_d2: chk_tue = st.checkbox("სამ", value=False, key="c_tue")
+        with c_d3: chk_wed = st.checkbox("ოთხ", value=False, key="c_wed")
+        with c_d4: chk_thu = st.checkbox("ხუთ", value=False, key="c_thu")
+        with c_d5: chk_fri = st.checkbox("პარ", value=False, key="c_fri")
+        with c_d6: chk_sat = st.checkbox("შაბ", value=False, key="c_sat")
+        with c_d7: chk_sun = st.checkbox("კვი", value=False, key="c_sun")
 
-            submitted = st.form_submit_button("💾 ჯგუფის შენახვა")
+        selected_days = []
+        if chk_mon: selected_days.append(0)
+        if chk_tue: selected_days.append(1)
+        if chk_wed: selected_days.append(2)
+        if chk_thu: selected_days.append(3)
+        if chk_fri: selected_days.append(4)
+        if chk_sat: selected_days.append(5)
+        if chk_sun: selected_days.append(6)
+
+        day_map = {0: "ორშ", 1: "სამ", 2: "ოთხ", 3: "ხუთ", 4: "პარ", 5: "შაბ", 6: "კვი"}
+        days_display_str = ", ".join([day_map[d] for d in selected_days])
+
+        # თარიღების გამოთვლა
+        candidate_dates = []
+        if start_date <= end_date and selected_days:
+            cur_calc = start_date
+            while cur_calc <= end_date:
+                if cur_calc.weekday() in selected_days:
+                    candidate_dates.append(cur_calc)
+                cur_calc += datetime.timedelta(days=1)
+
+        # დასვენების / შუალედურის პერიოდის ამოღება
+        with st.expander("🚫 დასვენების / შუალედურის პერიოდის სწრაფი ამოღება", expanded=False):
+            c_vac1, c_vac2 = st.columns(2)
+            with c_vac1:
+                vac_start = st.date_input("დასვენების დაწყება", value=None, key="vac_s")
+            with c_vac2:
+                vac_end = st.date_input("დასვენების დასრულება", value=None, key="vac_e")
+
+        formatted_candidates = [
+            f"{d.strftime('%Y-%m-%d')} ({DAY_NAMES_KA[d.weekday()]})"
+            for d in candidate_dates
+        ]
+
+        default_active = [
+            f"{d.strftime('%Y-%m-%d')} ({DAY_NAMES_KA[d.weekday()]})"
+            for d in candidate_dates
+            if not (vac_start and vac_end and vac_start <= d <= vac_end)
+        ]
+
+        chosen_dates = st.multiselect(
+            "📅 მონიშნეთ ყველა დღე, როცა ლექცია რეალურად ტარდება (შეგიძლიათ მოხსნათ შუალედური ან დასვენება):",
+            options=formatted_candidates,
+            default=default_active,
+            key="chosen_active_dates"
+        )
+
+        st.caption(f"📌 სულ არჩეულია: **{len(chosen_dates)}** ლექცია")
+
+        submitted = st.button("💾 ჯგუფის შენახვა", type="primary", use_container_width=True)
 
         if submitted:
             if not university.strip() or not subject.strip() or not lecturer.strip():
                 st.error("⚠️ გთხოვთ შეავსოთ ყველა სავალდებულო ველი!")
+            elif not selected_days:
+                st.error("⚠️ გთხოვთ მონიშნოთ კვირის მინიმუმ ერთი დღე!")
+            elif not chosen_dates:
+                st.error("⚠️ გთხოვთ მონიშნოთ მინიმუმ ერთი ლექციის თარიღი!")
             elif start_date > end_date:
                 st.error("⚠️ დაწყების თარიღი არ შეიძლება იყოს დასრულების თარიღზე გვიან!")
             elif start_time >= end_time:
                 st.error("⚠️ დაწყების საათი უნდა უსწრებდეს დასრულების საათს!")
             else:
+                active_dates_list = [x.split(' ')[0] for x in chosen_dates]
                 new_entry = {
-                    "university": university.strip(), "subject": subject.strip(),
-                    "lecturer": lecturer.strip(), "auditorium": auditorium,
-                    "start_date": str(start_date), "end_date": str(end_date),
-                    "start_time": start_time.strftime("%H:%M"), "end_time": end_time.strftime("%H:%M"),
-                    "include_saturday": bool(include_sat), "include_sunday": bool(include_sun)
+                    "university": university.strip(),
+                    "subject": subject.strip(),
+                    "lecturer": lecturer.strip(),
+                    "auditorium": auditorium,
+                    "start_date": str(start_date),
+                    "end_date": str(end_date),
+                    "start_time": start_time.strftime("%H:%M"),
+                    "end_time": end_time.strftime("%H:%M"),
+                    "days_of_week": selected_days,
+                    "days_display": days_display_str,
+                    "active_dates": active_dates_list,
+                    "include_saturday": 5 in selected_days,
+                    "include_sunday": 6 in selected_days
                 }
-                aud_c, lec_c = check_conflicts(new_entry)
-                if aud_c and lec_c:
+
+                aud_conflicts, lec_conflicts = check_conflicts(new_entry)
+
+                if aud_conflicts and lec_conflicts:
                     st.error("❌ ლექტორი დაკავებულია და აუდიტორია დაკავებულია")
-                elif aud_c:
-                    st.error(f"❌ აუდიტორია დაკავებულია საგნით '{aud_c[0]['subject']}'")
-                elif lec_c:
-                    st.error(f"❌ ლექტორი {new_entry['lecturer']} უკვე დაკავებულია")
+                    for c in aud_conflicts:
+                        st.warning(f"📌 {c['auditorium']}: დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
+                    for c in lec_conflicts:
+                        st.warning(f"📌 {c['lecturer']}: დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
+                elif aud_conflicts:
+                    st.error("❌ აუდიტორია დაკავებულია")
+                    for c in aud_conflicts:
+                        st.warning(f"📌 {c['auditorium']}: უკვე დაკავებულია საგნით '{c['subject']}' ({c['lecturer']}) ({c['start_time']} - {c['end_time']})")
+                elif lec_conflicts:
+                    st.error("❌ ლექტორი დაკავებულია")
+                    for c in lec_conflicts:
+                        st.warning(f"📌 ლექტორი {c['lecturer']} უკვე დაკავებულია საგნით '{c['subject']}' ({c['start_time']} - {c['end_time']})")
                 else:
                     st.session_state.schedule.append(new_entry)
                     save_data(st.session_state.schedule)
@@ -339,10 +644,14 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
         if not st.session_state.schedule:
             st.info("ბაზაში ჯერ ჩანაწერები არ არის.")
         else:
-            del_options = {f"#{i+1} {d['subject']} ({d['auditorium']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": i for i, d in enumerate(st.session_state.schedule)}
+            del_options = {
+                f"#{i+1} {d['subject']} ({d['auditorium']}, {d['lecturer']} [{d['start_time']}-{d['end_time']}])": i 
+                for i, d in enumerate(st.session_state.schedule)
+            }
             to_delete = st.selectbox("აირჩიეთ წასაშლელი ჩანაწერი:", list(del_options.keys()))
             if st.button("🗑️ არჩეული ჯგუფის წაშლა", use_container_width=True):
-                st.session_state.schedule.pop(del_options[to_delete])
+                idx_to_del = del_options[to_delete]
+                st.session_state.schedule.pop(idx_to_del)
                 save_data(st.session_state.schedule)
                 st.success("ჩანაწერი წაშლილია!")
                 st.rerun()
@@ -350,110 +659,181 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
             st.markdown("---")
             df_export = pd.DataFrame(st.session_state.schedule)
             csv_bytes = df_export.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 ბაზის გადმოწერა (CSV)", data=csv_bytes, file_name="lecture_schedule.csv", mime="text/csv", use_container_width=True)
+            st.download_button(
+                label="📥 ბაზის გადმოწერა (CSV)",
+                data=csv_bytes,
+                file_name="lecture_schedule.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
-# 3. AI ჭკვიანი იმპორტი
-elif selected_page == "🤖 AI ჭკვიანი იმპორტი (ტექსტიდან)":
-    st.subheader("🤖 ხელოვნური ინტელექტით არეული ტექსტის ამოცნობა")
-    st.caption("ჩასვით ნებისმიერი არეული ტექსტი. AI ავტომატურად ამოიღებს ყველა პარამეტრს და ასახავს განრიგში.")
-    
-    ai_col1, ai_col2 = st.columns((7, 3), gap="large")
-    with ai_col2:
-        saved_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else ""
-        api_key_input = st.text_input("🔑 Gemini API Key:", value=saved_key, type="password", placeholder="AIzaSy...")
-        st.caption("უფასო გასაღების აღება: [Google AI Studio](https://aistudio.google.com/app/apikey)")
-    with ai_col1:
-        raw_text = st.text_area("📋 ჩასვით არეული ტექსტი აქ:", height=180, placeholder="მაგ. 25 სექტემბერს დავით შოვნაძეს აქვს საზოგადოებრივი ჯანდაცვა აუდიტორია 1-ში 10:00-12:00 GAU-ში...")
-        parse_btn = st.button("✨ ტექსტის გაანალიზება AI-ით", use_container_width=True)
+# ==============================================================================
+# გვერდი 3: საათების რეპორტი & მონიტორინგი
+# ==============================================================================
+elif selected_page == "📊 საათების რეპორტი & მონიტორინგი":
+    tab_report, tab_day, tab_cards = st.tabs([
+        "📊 ლექტორების საათების რეპორტი", 
+        "🏛️ 5 აუდიტორიის დღიური სტატუსი", 
+        "📋 ყველა ჯგუფის ბარათები"
+    ])
 
-    if parse_btn:
-        if not api_key_input.strip():
-            st.error("⚠️ გთხოვთ შეიყვანოთ Gemini API Key!")
-        elif not raw_text.strip():
-            st.error("⚠️ გთხოვთ ჩასვათ ტექსტი გასაანალიზებლად!")
+    # 1. საათების ზუსტი რეპორტი
+    with tab_report:
+        st.subheader("📊 ლექტორების ჩატარებული საათების რეპორტი")
+        st.caption("ℹ️ საათები ზუსტად ითვლება იმ დღეების მიხედვით, როდესაც ლექცია რეალურად ტარდება (შაბათ-კვირის გათვალისწინებით).")
+
+        if not st.session_state.schedule:
+            st.info("რეპორტისთვის მონაცემები ჯერ არ არის.")
         else:
-            with st.spinner("⏳ AI აანალიზებს ტექსტს..."):
-                try:
-                    items = call_gemini_parser(api_key_input.strip(), raw_text.strip())
-                    if isinstance(items, list) and len(items) > 0:
-                        st.session_state.ai_parsed_results = items
-                        st.success(f"🎉 ამოცნობილია {len(items)} ლექცია/ჯგუფი!")
-                    else:
-                        st.warning("AI-მ მონაცემების ამოცნობა ვერ შეძლო.")
-                except Exception as err:
-                    st.error(f"❌ შეცდომა: {err}")
+            lecturer_summary = {}
 
-    if st.session_state.get('ai_parsed_results'):
-        st.markdown("---")
-        st.markdown("### 📋 ამოცნობილი ლექციები (Preview):")
-        items_to_add = st.session_state.ai_parsed_results
-        st.dataframe(pd.DataFrame(items_to_add), use_container_width=True)
+            for item in st.session_state.schedule:
+                lec = str(item['lecturer']).strip()
+                sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
+                edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
+                
+                stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M")
+                etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M")
+                session_duration = (etime - stime).total_seconds() / 3600.0
+
+                actual_sessions = 0
+                cur_d = sdate
+                while cur_d <= edate:
+                    if is_event_active_on_date(item, cur_d):
+                        actual_sessions += 1
+                    cur_d += datetime.timedelta(days=1)
+
+                item_total_hours = round(actual_sessions * session_duration, 2)
+
+                if lec not in lecturer_summary:
+                    lecturer_summary[lec] = {
+                        "ლექტორი": lec,
+                        "უნივერსიტეტი": set(),
+                        "საგნები": set(),
+                        "ლექციების რაოდენობა": 0,
+                        "სრული საათები": 0.0
+                    }
+
+                lecturer_summary[lec]["უნივერსიტეტი"].add(str(item['university']))
+                lecturer_summary[lec]["საგნები"].add(str(item['subject']))
+                lecturer_summary[lec]["ლექციების რაოდენობა"] += actual_sessions
+                lecturer_summary[lec]["სრული საათები"] += item_total_hours
+
+            report_rows = []
+            for lec, data in lecturer_summary.items():
+                report_rows.append({
+                    "ლექტორი": data["ლექტორი"],
+                    "უნივერსიტეტი": ", ".join(data["უნივერსიტეტი"]),
+                    "საგნები": ", ".join(data["საგნები"]),
+                    "სულ ლექციები": data["ლექციების რაოდენობა"],
+                    "სრული საათები": round(data["სრული საათები"], 2)
+                })
+
+            df_rep = pd.DataFrame(report_rows)
+            df_rep.sort_values(by="სრული საათები", ascending=False, inplace=True)
+            
+            st.dataframe(df_rep, use_container_width=True, hide_index=True)
+
+            csv_rep_bytes = df_rep.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 ლექტორების საათების რეპორტის გადმოწერა (CSV)",
+                data=csv_rep_bytes,
+                file_name="lecturers_hours_report.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+
+    # 2. დღიური მონიტორინგი
+    with tab_day:
+        selected_monitor_date = st.date_input("აირჩიეთ თარიღი:", value=datetime.date.today(), key="mon_day_p3")
         
-        c_btn1, c_btn2 = st.columns((4, 2))
-        with c_btn1:
-            if st.button("📥 ყველა ამოცნობილი ჯგუფის დამატება განრიგში", use_container_width=True):
-                for it in items_to_add:
-                    st.session_state.schedule.append(it)
-                save_data(st.session_state.schedule)
-                st.session_state.ai_parsed_results = []
-                st.success("✅ ყველა ჯგუფი დაემატა განრიგში!")
-                st.rerun()
-        with c_btn2:
-            if st.button("🗑️ გასუფთავება", use_container_width=True):
-                st.session_state.ai_parsed_results = []
-                st.rerun()
+        room_cols = st.columns(5)
+        for i, room in enumerate(AUDITORIUMS):
+            with room_cols[i]:
+                occupied_sessions = []
+                for item in st.session_state.schedule:
+                    item_aud = "საკონფერენციო დარბაზი" if item['auditorium'] == "აუდიტორია 5" else item['auditorium']
+                    if item_aud == room and is_event_active_on_date(item, selected_monitor_date):
+                        occupied_sessions.append(item)
 
-# 4. საათების რეპორტი & სია
-elif selected_page == "📊 საათების რეპორტი & სია":
-    st.subheader("📊 ლექტორების ჩატარებული საათების რეპორტი")
-    st.caption("საათები ზუსტად ითვლება იმ დღეების მიხედვით, როდესაც ლექცია რეალურად ტარდება.")
+                occupied_sessions.sort(key=lambda x: str(x['start_time']))
 
-    if not st.session_state.schedule:
-        st.info("რეპორტისთვის მონაცემები ჯერ არ არის.")
-    else:
-        summary = {}
-        for item in st.session_state.schedule:
-            lec = str(item['lecturer']).strip()
-            sdate = datetime.datetime.strptime(str(item['start_date']), "%Y-%m-%d").date()
-            edate = datetime.datetime.strptime(str(item['end_date']), "%Y-%m-%d").date()
-            stime = datetime.datetime.strptime(str(item['start_time']), "%H:%M")
-            etime = datetime.datetime.strptime(str(item['end_time']), "%H:%M")
-            dur = (etime - stime).total_seconds() / 3600.0
+                if occupied_sessions:
+                    st.markdown(
+                        f'<div class="room-box room-busy">'
+                        f'<h3 style="color: #EF4444; margin-bottom: 6px;">🔴 {room}</h3>'
+                        f'<div style="color: #EF4444; font-weight: 700; margin-bottom: 10px;">დაკავებულია ({len(occupied_sessions)} ლექცია)</div>',
+                        unsafe_allow_html=True
+                    )
+                    for occ in occupied_sessions:
+                        st.markdown(
+                            f'<div style="background: rgba(0,0,0,0.06); padding: 8px; border-radius: 6px; margin-bottom: 6px;">'
+                            f'<div><b>⏰ {occ["start_time"]} - {occ["end_time"]}</b></div>'
+                            f'<div>📖 {occ["subject"]}</div>'
+                            f'<div style="font-size: 0.9rem; opacity: 0.85;">👨‍🏫 {occ["lecturer"]}</div>'
+                            f'</div>',
+                            unsafe_allow_html=True
+                        )
+                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(
+                        f'<div class="room-box room-free">'
+                        f'<h3 style="color: #10B981; margin-bottom: 6px;">🟢 {room}</h3>'
+                        f'<div style="color: #10B981; font-weight: 700;">თავისუფალია მთელი დღე</div>'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
 
-            sessions = 0
-            cur_d = sdate
-            while cur_d <= edate:
-                if is_event_active_on_date(item, cur_d): sessions += 1
-                cur_d += datetime.timedelta(days=1)
+    # 3. ყველა ჯგუფის ბარათები
+    with tab_cards:
+        st.subheader("📋 ყველა რეგისტრირებული ჯგუფის ბარათი")
+        
+        if not st.session_state.schedule:
+            st.info("ჯგუფები არ არის რეგისტრირებული.")
+        else:
+            filter_aud = st.selectbox("ფილტრი აუდიტორიით:", ["ყველა"] + AUDITORIUMS, key="filter_aud_cards")
+            
+            filtered_data = st.session_state.schedule
+            if filter_aud != "ყველა":
+                filtered_data = [
+                    d for d in filtered_data 
+                    if ("საკონფერენციო დარბაზი" if d['auditorium'] == "აუდიტორია 5" else d['auditorium']) == filter_aud
+                ]
 
-            if lec not in summary:
-                summary[lec] = {"ლექტორი": lec, "უნივერსიტეტი": set(), "საგნები": set(), "ლექციების რაოდენობა": 0, "სრული საათები": 0.0}
-            summary[lec]["უნივერსიტეტი"].add(str(item['university']))
-            summary[lec]["საგნები"].add(str(item['subject']))
-            summary[lec]["ლექციების რაოდენობა"] += sessions
-            summary[lec]["სრული საათები"] += round(sessions * dur, 2)
-
-        rows = [{"ლექტორი": d["ლექტორი"], "უნივერსიტეტი": ", ".join(d["უნივერსიტეტი"]), "საგნები": ", ".join(d["საგნები"]), "სულ ლექციები": d["ლექციების რაოდენობა"], "სრული საათები": round(d["სრული საათები"], 2)} for d in summary.values()]
-        df_rep = pd.DataFrame(rows).sort_values(by="სრული საათები", ascending=False)
-        st.dataframe(df_rep, use_container_width=True, hide_index=True)
-        st.download_button("📥 რეპორტის გადმოწერა (CSV)", data=df_rep.to_csv(index=False).encode('utf-8-sig'), file_name="lecturers_hours_report.csv", mime="text/csv", use_container_width=True)
-
-        st.markdown("---")
-        st.markdown("### 📋 ყველა ჯგუფის ბარათები")
-        grid_cols = st.columns(2)
-        for i, row in enumerate(st.session_state.schedule):
-            with grid_cols[i % 2]:
-                sat = " • შაბ" if row.get('include_saturday') else ""
-                sun = " • კვ" if row.get('include_sunday') else ""
-                card_html = (
-                    f'<div class="slot-card" style="border-radius:12px; padding:16px; margin-bottom:14px;">'
-                    f'<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">'
-                    f'<span class="slot-subject">{row["subject"]}</span>'
-                    f'<span style="background-color:#2563EB; color:#FFF; font-size:0.9rem; font-weight:700; padding:2px 8px; border-radius:4px;">{row["auditorium"]}</span>'
-                    f'</div>'
-                    f'<div class="slot-time">⏰ {row["start_time"]} – {row["end_time"]}</div>'
-                    f'<div class="slot-lecturer"><b>👨‍🏫</b> {row["lecturer"]} | <b>🏛️</b> {row["university"]}</div>'
-                    f'<div class="slot-univ"><b>📅</b> {row["start_date"]} — {row["end_date"]} (ორშ-პარ{sat}{sun})</div>'
-                    f'</div>'
-                )
-                st.markdown(card_html, unsafe_allow_html=True)
+            if filtered_data:
+                grid_cols = st.columns(2)
+                for i, row in enumerate(filtered_data):
+                    target_col = grid_cols[i % 2]
+                    day_map = {0: "ორშ", 1: "სამ", 2: "ოთხ", 3: "ხუთ", 4: "პარ", 5: "შაბ", 6: "კვი"}
+                    if row.get('days_display') and pd.notna(row.get('days_display')):
+                        days_note = str(row['days_display'])
+                    elif row.get('days_of_week'):
+                        d_list = parse_days(row['days_of_week']) or []
+                        days_note = ", ".join([day_map.get(d, str(d)) for d in d_list])
+                    else:
+                        sat_label = " • შაბათი" if row.get('include_saturday') else ""
+                        sun_label = " • კვირა" if row.get('include_sunday') else ""
+                        days_note = f"ორშ-პარ{sat_label}{sun_label}"
+                    
+                    if row.get('active_dates'):
+                        a_dates = parse_active_dates(row['active_dates'])
+                        if a_dates:
+                            days_note += f" (სულ {len(a_dates)} ლექცია)"
+                    
+                    with target_col:
+                        card_html = (
+                            f'<div class="schedule-card" style="background-color: var(--secondary-background-color); border: 1.5px solid rgba(128, 128, 128, 0.25); border-radius: 12px; padding: 18px; margin-bottom: 16px;">'
+                            f'<div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">'
+                            f'<span style="font-size: 1.25rem; font-weight: 800; color: var(--text-color);">{row["subject"]}</span>'
+                            f'<span style="background-color: #2563EB; color: #FFFFFF; font-size: 0.95rem; font-weight: 700; padding: 4px 10px; border-radius: 6px;">{row["auditorium"]}</span>'
+                            f'</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>👨‍🏫 ლექტორი:</b> {row["lecturer"]}</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>🏛️ უნივერსიტეტი:</b> {row["university"]}</div>'
+                            f'<div style="font-size: 1.05rem; color: var(--text-color); margin-bottom: 6px;"><b>📅 პერიოდი:</b> {row["start_date"]} — {row["end_date"]}</div>'
+                            f'<div style="font-size: 0.95rem; color: #2563EB; font-weight: 700; margin-bottom: 10px;">📆 დღეები: {days_note}</div>'
+                            f'<div style="display: inline-block; background-color: rgba(37, 99, 235, 0.15); border: 1.5px solid #2563EB; color: var(--text-color); font-size: 1.1rem; font-weight: 800; padding: 5px 12px; border-radius: 8px;">'
+                            f'⏰ {row["start_time"]} – {row["end_time"]}'
+                            f'</div>'
+                            f'</div>'
+                        )
+                        st.markdown(card_html, unsafe_allow_html=True)
