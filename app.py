@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+import json
+import urllib.request
+import urllib.error
 
 # გვერდის კონფიგურაცია - Wide რეჟიმი
 st.set_page_config(
@@ -21,14 +24,13 @@ MONTHS_GE = {
     9: "სექტემბერი", 10: "ოქტომბერი", 11: "ნოემბერი", 12: "დეკემბერი"
 }
 
-# CSS სტილები - მობილურზე მორგება (Responsive) და Dark/Light თავსებადობა
+# CSS სტილები - მობილურზე მორგება და Dark/Light თავსებადობა
 st.markdown("""
 <style>
     html, body, [class*="css"] {
         font-size: 16px;
     }
 
-    /* ზედა მენიუს ღილაკები */
     div[role="radiogroup"] {
         background-color: var(--secondary-background-color);
         padding: 6px;
@@ -42,12 +44,11 @@ st.markdown("""
     }
     div[role="radiogroup"] label {
         padding: 8px 18px !important;
-        font-size: 1.1rem !important;
+        font-size: 1.05rem !important;
         font-weight: 700 !important;
         border-radius: 8px !important;
     }
 
-    /* კვირის სრული ბადის კონტეინერი და ცხრილი */
     .table-scroll-wrapper {
         width: 100%;
         overflow-x: auto;
@@ -75,7 +76,6 @@ st.markdown("""
         vertical-align: top;
     }
 
-    /* ბარათები ცხრილის უჯრებში */
     .slot-card {
         background-color: var(--secondary-background-color);
         border: 1.5px solid #EF4444;
@@ -113,7 +113,6 @@ st.markdown("""
         opacity: 0.75;
     }
 
-    /* აუდიტორიის მონიტორინგის ბარათები */
     .room-box {
         border-radius: 12px;
         padding: 16px;
@@ -129,7 +128,6 @@ st.markdown("""
         border: 2px solid #10B981 !important;
     }
 
-    /* შენახვის ღილაკი */
     .stButton>button {
         width: 100%;
         font-size: 1.15rem !important;
@@ -145,7 +143,6 @@ st.markdown("""
         color: #FFFFFF !important;
     }
 
-    /* --- მობილური ეკრანების ადაპტაცია (Responsive) --- */
     @media (max-width: 768px) {
         .block-container {
             padding: 1rem 0.5rem !important;
@@ -173,9 +170,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==============================================================================
-# ავტორიზაციის შემოწმება (Login Gate)
-# ==============================================================================
+# ავტორიზაცია
 def check_auth():
     if st.session_state.get("authenticated", False):
         return True
@@ -191,7 +186,6 @@ def check_auth():
             login_btn = st.form_submit_button("შესვლა", use_container_width=True)
 
         if login_btn:
-            # პაროლის გადამოწმება
             valid_user = st.secrets.get("AUTH_USER", "admin") if hasattr(st, "secrets") and "AUTH_USER" in st.secrets else "admin"
             valid_pass = st.secrets.get("AUTH_PASSWORD", "admin2026") if hasattr(st, "secrets") and "AUTH_PASSWORD" in st.secrets else "admin2026"
 
@@ -205,18 +199,13 @@ def check_auth():
 
     return False
 
-# არაავტორიზებული მომხმარებლისთვის საიტი აქ ჩერდება
 if not check_auth():
     st.stop()
 
-# ==============================================================================
-# ავტორიზებული მომხმარებლის ინტერფეისი
-# ==============================================================================
-
-# ზედა სტატუსი და გამოსვლის ღილაკი
+# ჰედერი და გამოსვლა
 top_info, top_logout = st.columns((8, 2))
 with top_info:
-    st.caption(f"👤 ავტორიზებული მომხმარებელი: **{st.session_state.get('current_user', 'admin')}**")
+    st.caption(f"👤 ავტორიზებული: **{st.session_state.get('current_user', 'admin')}**")
 with top_logout:
     if st.button("🚪 გამოსვლა", key="logout_btn", use_container_width=True):
         st.session_state.authenticated = False
@@ -316,12 +305,65 @@ def check_conflicts(new_entry):
 
     return aud_conflicts, lec_conflicts
 
+# AI დამუშავების ფუნქცია (Google Gemini API REST)
+def call_gemini_parser(api_key, raw_text):
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    prompt = f"""
+შენ ხარ სასწავლო განრიგის ანალიზის ასისტენტი.
+მომხმარებელმა მოგაწოდა არეული ტექსტი ლექციების შესახებ.
+ტექსტიდან ამოიღე ყველა ლექცია/ჯგუფი და დააბრუნე მკაცრად JSON მასივი (Array of objects).
+
+სტრუქტურა თითოეული ლექციისთვის:
+[
+  {{
+    "university": "უნივერსიტეტი (თუ არ წერია, ჩაწერე 'უცნობი')",
+    "subject": "საგანი",
+    "lecturer": "ლექტორი",
+    "auditorium": "ერთ-ერთი ზუსტად: 'აუდიტორია 1', 'აუდიტორია 2', 'აუდიტორია 3', 'აუდიტორია 4', 'საკონფერენციო დარბაზი'",
+    "start_date": "YYYY-MM-DD",
+    "end_date": "YYYY-MM-DD",
+    "start_time": "HH:MM",
+    "end_time": "HH:MM",
+    "include_saturday": false,
+    "include_sunday": false
+  }}
+]
+
+წესები:
+1. თუ თარიღი მითითებულია 25 სექტემბერი, გამოიყენე მიმდინარე წელი ({datetime.date.today().year}).
+2. თუ თარიღი მითითებულია ერთი დღე, start_date და end_date იყოს ერთი და იგივე.
+3. თუ აუდიტორია მითითებულია მაგ. 1 ან 101, შეუსაბამე 'აუდიტორია 1'.
+4. დააბრუნე მხოლოდ სუფთა JSON, არანაირი დამატებითი ტექსტი და არანაირი markdown ბლოკი (```json).
+
+ტექსტი:
+{raw_text}
+"""
+    headers = {"Content-Type": "application/json"}
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1}
+    }
+    
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=35) as resp:
+        res_data = json.loads(resp.read().decode('utf-8'))
+        text = res_data['candidates'][0]['content']['parts'][0]['text'].strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        return json.loads(text.strip())
+
 # ზედა ნავიგაცია
 selected_page = st.radio(
     "გვერდის არჩევა",
     (
         "📅 კვირის სრული ბადე (სრული ეკრანი)", 
-        "➕ ახალი ჯგუფის დამატება & მართვა", 
+        "➕ ახალი ჯგუფის დამატება & მართვა",
+        "🤖 AI ჭკვიანი იმპორტი (ტექსტიდან)",
         "📊 საათების რეპორტი & მონიტორინგი"
     ),
     horizontal=True,
@@ -329,7 +371,7 @@ selected_page = st.radio(
 )
 
 # ==============================================================================
-# გვერდი 1: კვირის სრული ბადე (100% ეკრანი, სენსორული სქროლით)
+# გვერდი 1: კვირის სრული ბადე (100% ეკრანი)
 # ==============================================================================
 if selected_page == "📅 კვირის სრული ბადე (სრული ეკრანი)":
     cur_mon = st.session_state.current_monday
@@ -533,7 +575,85 @@ elif selected_page == "➕ ახალი ჯგუფის დამატე
             )
 
 # ==============================================================================
-# გვერდი 3: საათების რეპორტი & მონიტორინგი
+# გვერდი 3: AI ჭკვიანი იმპორტი (ტექსტიდან)
+# ==============================================================================
+elif selected_page == "🤖 AI ჭკვიანი იმპორტი (ტექსტიდან)":
+    st.subheader("🤖 ხელოვნური ინტელექტით არეული ტექსტის ამოცნობა")
+    st.markdown("""
+    ჩააკოპირეთ ნებისმიერი არეული ტექსტი (მეილიდან, ჩათიდან, შენიშვნებიდან ან დოკუმენტიდან). 
+    **AI ავტომატურად ამოიღებს ყველა პარამეტრს** (უნივერსიტეტი, საგანი, ლექტორი, აუდიტორია, თარიღები, საათები) და პირდაპირ ასახავს კალენდარსა და ცხრილში!
+    """)
+
+    ai_col1, ai_col2 = st.columns((7, 3), gap="large")
+    
+    with ai_col2:
+        st.markdown("##### ⚙️ AI პარამეტრები")
+        saved_key = st.secrets.get("GEMINI_API_KEY", "") if hasattr(st, "secrets") and "GEMINI_API_KEY" in st.secrets else ""
+        api_key_input = st.text_input("🔑 Google Gemini API Key:", value=saved_key, type="password", placeholder="AIzaSy...")
+        st.caption("💡 უფასო API გასაღების აღება 1 წუთში შეგიძლიათ [Google AI Studio-ზე](https://aistudio.google.com/app/apikey).")
+
+    with ai_col1:
+        raw_text_input = st.text_area(
+            "📋 ჩასვით არეული ტექსტი აქ:",
+            height=200,
+            placeholder="მაგალითად:\n25 სექტემბერს დავით შოვნაძეს აქვს საზოგადოებრივი ჯანდაცვა აუდიტორია 1-ში 10:00-დან 12:00-მდე GAU-ში.\nასევე 28 სექტემბრიდან 15 ოქტომბრამდე გიორგი ბერიძეს მიჰყავს ბიოქიმია TSU-ს საკონფერენციო დარბაზში 14:00-16:00, შაბათის ჩათვლით..."
+        )
+
+        parse_button = st.button("✨ ტექსტის გაანალიზება AI-ით", use_container_width=True)
+
+    if parse_button:
+        if not api_key_input.strip():
+            st.error("⚠️ გთხოვთ შეიყვანოთ Gemini API Key მარჯვენა ველში!")
+        elif not raw_text_input.strip():
+            st.error("⚠️ გთხოვთ ჩასვათ ტექსტი გასაანალიზებლად!")
+        else:
+            with st.spinner("⏳ ხელოვნური ინტელექტი აანალიზებს ტექსტს და აწყობს განრიგს..."):
+                try:
+                    parsed_items = call_gemini_parser(api_key_input.strip(), raw_text_input.strip())
+                    if isinstance(parsed_items, list) and len(parsed_items) > 0:
+                        st.session_state.ai_parsed_results = parsed_items
+                        st.success(f"🎉 AI-მ წარმატებით ამოიცნო {len(parsed_items)} ლექცია/ჯგუფი!")
+                    else:
+                        st.warning("AI-მ ტექსტიდან ლექციების ამოცნობა ვერ შეძლო. შეამოწმეთ ტექსტის შინაარსი.")
+                except Exception as err:
+                    st.error(f"❌ შეცდომა AI-სთან კავშირისას: {err}")
+
+    # ამოცნობილი მონაცემების წინასწარი გადახედვა და შენახვა
+    if 'ai_parsed_results' in st.session_state and st.session_state.ai_parsed_results:
+        st.markdown("---")
+        st.markdown("### 📋 AI-ის მიერ ამოღებული ლექციები (Preview):")
+        
+        items_to_add = st.session_state.ai_parsed_results
+        df_preview = pd.DataFrame(items_to_add)
+        st.dataframe(df_preview, use_container_width=True)
+
+        # კონფლიქტების გადამოწმება თითოეულზე
+        conflicts_found = 0
+        for item in items_to_add:
+            aud_c, lec_c = check_conflicts(item)
+            if aud_c or lec_c:
+                conflicts_found += 1
+                msg = []
+                if aud_c: msg.append(f"აუდიტორია {item['auditorium']} დაკავებულია")
+                if lec_c: msg.append(f"ლექტორი {item['lecturer']} დაკავებულია")
+                st.warning(f"⚠️ ყურადღება: {item['subject']} ({item['start_time']}-{item['end_time']}) -> {', '.join(msg)}")
+
+        c_btn1, c_btn2 = st.columns((4, 2))
+        with c_btn1:
+            if st.button("📥 ყველა ამოცნობილი ჯგუფის დამატება განრიგში", use_container_width=True):
+                for item in items_to_add:
+                    st.session_state.schedule.append(item)
+                save_data(st.session_state.schedule)
+                st.session_state.ai_parsed_results = []
+                st.success("✅ ყველა ჯგუფი წარმატებით ჩაემატა განრიგში!")
+                st.rerun()
+        with c_btn2:
+            if st.button("🗑️ გასუფთავება", use_container_width=True):
+                st.session_state.ai_parsed_results = []
+                st.rerun()
+
+# ==============================================================================
+# გვერდი 4: საათების რეპორტი & მონიტორინგი
 # ==============================================================================
 elif selected_page == "📊 საათების რეპორტი & მონიტორინგი":
     tab_report, tab_day, tab_cards = st.tabs([
@@ -686,4 +806,4 @@ elif selected_page == "📊 საათების რეპორტი & მ
                             f'</div>'
                             f'</div>'
                         )
-                        st.markdown(card_html, unsafe_allow_html=True)
+                        st.markdown(card_html,
